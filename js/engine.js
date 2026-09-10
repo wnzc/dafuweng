@@ -20,7 +20,7 @@ window.DC = window.DC || {};
       try {
         var snap = JSON.parse(JSON.stringify({
           v: C.version, players: state.players, current: state.current, round: state.round,
-          dice: state.dice, owners: state.owners, houses: state.houses, mortgaged: state.mortgaged,
+          die: state.die, owners: state.owners, houses: state.houses, mortgaged: state.mortgaged,
           pot: state.pot, log: state.log.slice(-40), chance: state.chance, chanceIdx: state.chanceIdx,
           fate: state.fate, fateIdx: state.fateIdx, over: state.over
         }));
@@ -34,6 +34,8 @@ window.DC = window.DC || {};
         if (!raw) return null;
         var s = JSON.parse(raw);
         if (!s || s.v !== C.version || !s.players || s.over) return null;
+        // 旧版双骰存档不兼容
+        if (s.die === undefined && s.dice !== undefined) return null;
         return s;
       } catch (e) { return null; }
     },
@@ -45,10 +47,16 @@ window.DC = window.DC || {};
     this.ui = ui || {};
     this.settings = Object.assign({
       sound: true,
+      music: true,
       haptics: true,
       speed: 1,
-      reducedMotion: !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches)
+      // 默认不跟随系统「减少动画」，避免游戏动效被系统设置整锅关掉；
+      // 仍可在设置里手动打开。
+      reducedMotion: false
     }, settings || {});
+    if (settings && settings.reducedMotion === undefined) {
+      this.settings.reducedMotion = false;
+    }
     this.state = null;
     this._loopId = 0;
     this._rollResolve = null;
@@ -74,7 +82,8 @@ window.DC = window.DC || {};
     sfx: function (name) { if (this.settings.sound && this.ui.sfx) this.ui.sfx(name); },
     buzz: function (pattern) {
       if (!this.settings.haptics) return;
-      if (navigator.vibrate) { try { navigator.vibrate(pattern); } catch (e) {} }
+      if (window.DC && DC.haptics) DC.haptics.vibrate(pattern);
+      else if (navigator.vibrate) { try { navigator.vibrate(pattern); } catch (e) {} }
     },
     log: function (text, kind) {
       if (!this.state) return;
@@ -96,14 +105,14 @@ window.DC = window.DC || {};
         return {
           id: i, name: p.name, short: p.short, color: p.color, isAI: p.isAI,
           cash: C.startCash, pos: 0, inJail: false, jailTurns: 0, jailCards: 0,
-          doubles: 0, bankrupt: false, props: [], laps: 0
+          bankrupt: false, props: [], laps: 0
         };
       });
       this._loopId++;
       this._rollResolve = null;
       this._askResolve = null;
       this.state = {
-        players: players, current: 0, round: 1, dice: [0, 0],
+        players: players, current: 0, round: 1, die: 0,
         owners: {}, houses: {}, mortgaged: {}, pot: 0, log: [],
         chance: U.shuffle(DC.CHANCE), chanceIdx: 0,
         fate: U.shuffle(DC.FATE), fateIdx: 0,
@@ -161,13 +170,13 @@ window.DC = window.DC || {};
       } while (this.state.players[n].bankrupt && guard++ < total * 2);
       if (n <= this.state.current) this.state.round++;
       this.state.current = n;
-      this.state.dice = [0, 0];
+      this.state.die = 0;
       this.emit('state');
     },
 
     /* ---------- 一个回合 ---------- */
     async runTurn(p, id) {
-      var dice, extra = false;
+      var die;
       this.state.awaitingRoll = false;
       this.emit('state');
 
@@ -175,10 +184,10 @@ window.DC = window.DC || {};
         var jr = await this.handleJail(p);
         if (id !== this._loopId || p.bankrupt) return false;
         if (!jr.freed) return false;
-        if (jr.dice) {
-          this.setDice(jr.dice);
-          if (this.ui.dice) await this.ui.dice(p, jr.dice, this);
-          await this.moveBy(p, jr.dice[0] + jr.dice[1], id);
+        if (jr.die) {
+          this.setDie(jr.die);
+          if (this.ui.dice) await this.ui.dice(p, jr.die, this);
+          await this.moveBy(p, jr.die, id);
           if (id !== this._loopId) return false;
           await this.resolveLanding(p, id, 0);
           return false;
@@ -195,37 +204,21 @@ window.DC = window.DC || {};
       }
       if (id !== this._loopId || p.bankrupt) return false;
 
-      dice = [U.rand(1, 6), U.rand(1, 6)];
-      this.setDice(dice);
+      die = U.rand(1, 6);
+      this.setDie(die);
       this.sfx('dice');
       this.buzz(12);
-      if (this.ui.dice) await this.ui.dice(p, dice, this);
+      if (this.ui.dice) await this.ui.dice(p, die, this);
       if (id !== this._loopId) return false;
 
-      if (dice[0] === dice[1]) {
-        p.doubles++;
-        if (p.doubles >= 3) {
-          this.log(p.name + ' 连掷三次双数，被警察带走', 'jail');
-          await this.sendToJail(p);
-          p.doubles = 0;
-          return false;
-        }
-        extra = true;
-        this.log(p.name + ' 掷出双 ' + dice[0] + '，可再掷一次', 'info');
-      } else {
-        p.doubles = 0;
-      }
-
-      this.log(p.name + ' 掷出 ' + dice[0] + ' + ' + dice[1] + ' = ' + (dice[0] + dice[1]), 'dice');
-      await this.moveBy(p, dice[0] + dice[1], id);
+      this.log(p.name + ' 掷出 ' + die, 'dice');
+      await this.moveBy(p, die, id);
       if (id !== this._loopId) return false;
       await this.resolveLanding(p, id, 0);
-      if (this.state.over || p.bankrupt) return false;
-      if (this.state.justJailed) { this.state.justJailed = false; return false; }
-      return extra;
+      return false;
     },
 
-    setDice: function (d) { this.state.dice = d.slice(); this.emit('state'); },
+    setDie: function (v) { this.state.die = v; this.emit('state'); },
 
     waitRoll: function () {
       var self = this;
@@ -290,6 +283,7 @@ window.DC = window.DC || {};
           this.log(p.name + ' 缴纳所得税 ' + money(amt), 'pay');
           if (this.ui.float) this.ui.float('−' + money(amt), p.pos, 'pay');
           if (this.ui.shake) this.ui.shake();
+          this.sfx('tax');
           await this.pay(p, null, amt, '所得税');
           break;
         }
@@ -300,7 +294,7 @@ window.DC = window.DC || {};
             if (this.ui.coinFly) this.ui.coinFly(p.pos, p.id);
             p.cash += this.state.pot;
             this.state.pot = 0;
-            this.sfx('coin');
+            this.sfx('cash');
             this.emit('state');
           } else {
             this.log(p.name + ' 在免费停车场歇脚', 'info');
@@ -335,13 +329,16 @@ window.DC = window.DC || {};
         }
         return;
       }
-      if (ownerId === p.id) { this.log(cell.name + ' 是 ' + p.name + ' 自己的产业', 'info'); return; }
+      if (ownerId === p.id) {
+        await this.offerUpgrade(p, cell, id);
+        return;
+      }
       var owner = this.player(ownerId);
       if (!owner) return;
       if (this.state.mortgaged[cell.i]) { this.log(cell.name + ' 已抵押，本次免租', 'info'); return; }
       var rent = this.calcRent(cell);
       this.log(p.name + ' 踩到 ' + owner.name + ' 的 ' + cell.name + '，付租 ' + money(rent), 'rent');
-      this.sfx('pay');
+      this.sfx('rent');
       if (this.ui.float) this.ui.float('−' + money(rent), cell.i, 'pay');
       if (this.ui.shake) this.ui.shake();
       await this.pay(p, owner, rent, cell.name + ' 租金');
@@ -352,16 +349,17 @@ window.DC = window.DC || {};
       var ownerId = this.state.owners[cell.i];
       var p = this.player(ownerId);
       if (!p) return 0;
+      var houses = this.state.houses[cell.i] || 0;
       if (cell.type === 'rail') {
         var n = this.countType(p, 'rail');
-        return cell.rents[Math.min(n, 4) - 1] || 0;
+        var base = cell.rents[Math.min(n, 4) - 1] || 0;
+        return base + houses * 300;
       }
       if (cell.type === 'util') {
         var m = this.countType(p, 'util');
-        var d = (this.state.dice[0] || 0) + (this.state.dice[1] || 0);
-        return d * cell.mult[Math.min(m, 2) - 1];
+        var d = this.state.die || 0;
+        return d * ((cell.mult[Math.min(m, 2) - 1] || 0) + houses * 50);
       }
-      var houses = this.state.houses[cell.i] || 0;
       if (houses > 0) return cell.rents[houses];
       return cell.rents[0] * (this.ownsGroup(p, cell.group) ? 2 : 1);
     },
@@ -403,13 +401,51 @@ window.DC = window.DC || {};
       return res === 'buy' ? 'buy' : 'auction';
     },
 
+    /* 落在自己的地上：询问是否升级 */
+    async offerUpgrade(p, cell, id) {
+      if (this.state.mortgaged[cell.i]) {
+        this.log(cell.name + ' 已抵押，无法升级', 'info');
+        return;
+      }
+      if (!this.canUpgradeLevel(p, cell.i)) {
+        this.log(cell.name + ' 是 ' + p.name + ' 自己的产业' + ((this.state.houses[cell.i] || 0) >= C.maxHouses ? '（已满级）' : ''), 'info');
+        return;
+      }
+      if (p.isAI) {
+        await this.delay(420);
+        if (this.aiWantsUpgrade(p, cell)) this.buyHouse(p, cell.i);
+        else this.log(p.name + ' 暂不升级 ' + cell.name, 'info');
+        return;
+      }
+      if (!this.canBuild(p, cell.i)) {
+        this.log(p.name + ' 停在自己的 ' + cell.name + '，现金不足无法升级（需 ' + money(cell.houseCost) + '）', 'info');
+        return;
+      }
+      var choice = await this.ask({
+        type: 'upgrade', cellId: cell.i, playerId: p.id,
+        cost: cell.houseCost, level: this.state.houses[cell.i] || 0
+      });
+      if (id !== this._loopId) return;
+      if (choice === 'upgrade') this.buyHouse(p, cell.i);
+      else this.log(p.name + ' 暂不升级 ' + cell.name, 'info');
+    },
+
+    aiWantsUpgrade: function (p, cell) {
+      if (!this.canBuild(p, cell.i)) return false;
+      var left = p.cash - cell.houseCost;
+      // 高价值地块更愿意升；至少留一点现金
+      if (cell.type === 'rail' || cell.type === 'util') return left >= 2500;
+      if (cell.price >= 1400) return left >= 2000;
+      return left >= 1500;
+    },
+
     buy: function (p, cell, price) {
       p.cash -= price;
       this.state.owners[cell.i] = p.id;
       if (p.props.indexOf(cell.i) < 0) p.props.push(cell.i);
       this.state.lastDeed = cell.i;
       this.log(p.name + ' 买下 ' + cell.name + '（' + money(price) + '）', 'buy');
-      this.sfx('stamp');
+      this.sfx('buy');
       this.buzz(18);
       if (this.ui.stamp) this.ui.stamp(cell);
       this.emit('state');
@@ -446,7 +482,7 @@ window.DC = window.DC || {};
         if (ok) {
           bid = nextBid; high = p; turnIdx++;
           this.log(p.name + ' 出价 ' + money(bid), 'info');
-          this.sfx('coin');
+          this.sfx('bid');
           if (this.ui.auctionBid) this.ui.auctionBid(p, bid);
           this.emit('state');
         } else {
@@ -569,7 +605,7 @@ window.DC = window.DC || {};
       } else {
         this.log(p.name + ' 的产业被银行收回', 'danger');
       }
-      this.sfx('lose');
+      this.sfx('bankrupt');
       this.emit('state');
       if (this.alive().length <= 1) this.endGame();
     },
@@ -577,6 +613,7 @@ window.DC = window.DC || {};
     endGame: function () {
       if (this.state.over) return;
       this.state.over = true;
+      if (window.DC && DC.audio && DC.audio.stopMusic) DC.audio.stopMusic();
       var ranking = this.state.players.slice().sort(function (a, b) {
         if (a.bankrupt !== b.bankrupt) return a.bankrupt ? 1 : -1;
         return b.cash - a.cash;
@@ -607,28 +644,34 @@ window.DC = window.DC || {};
     },
 
     /* ---------- 地产经营 ---------- */
-    canBuild: function (p, i) {
+    /* 规则上是否可再升一级（不含现金） */
+    canUpgradeLevel: function (p, i) {
       var c = CELLS[i];
-      if (!c || c.type !== 'prop') return false;
+      if (!c || !c.houseCost) return false;
+      if (c.type !== 'prop' && c.type !== 'rail' && c.type !== 'util') return false;
       if (this.state.owners[i] !== p.id) return false;
-      if (!this.ownsGroup(p, c.group)) return false;
-      if (this.groupHasMortgage(c.group)) return false;
+      if (this.state.mortgaged[i]) return false;
       if ((this.state.houses[i] || 0) >= C.maxHouses) return false;
-      if ((this.state.houses[i] || 0) > this.groupMin(c.group)) return false;
+      return true;
+    },
+
+    canBuild: function (p, i) {
+      if (!this.canUpgradeLevel(p, i)) return false;
+      var c = CELLS[i];
       return p.cash >= c.houseCost;
     },
+
     canSellHouse: function (p, i) {
       var c = CELLS[i];
-      if (!c || c.type !== 'prop') return false;
+      if (!c || !c.houseCost) return false;
       if (this.state.owners[i] !== p.id) return false;
-      var h = this.state.houses[i] || 0;
-      return h > 0 && h >= this.groupMax(c.group);
+      return (this.state.houses[i] || 0) > 0;
     },
     canMortgage: function (p, i) {
       var c = CELLS[i];
       if (!c || (c.type !== 'prop' && c.type !== 'rail' && c.type !== 'util')) return false;
       if (this.state.owners[i] !== p.id || this.state.mortgaged[i]) return false;
-      if (c.type === 'prop' && this.groupMax(c.group) > 0) return false;
+      if ((this.state.houses[i] || 0) > 0) return false;
       return true;
     },
     canUnmortgage: function (p, i) {
@@ -642,9 +685,12 @@ window.DC = window.DC || {};
       var c = CELLS[i];
       p.cash -= c.houseCost;
       this.state.houses[i] = (this.state.houses[i] || 0) + 1;
-      this.log(p.name + ' 在 ' + c.name + ' 建造' + (this.state.houses[i] === 5 ? '酒店' : '第 ' + this.state.houses[i] + ' 栋房屋') + '（' + money(c.houseCost) + '）', 'build');
-      this.sfx('build');
-      this.buzz(14);
+      var lv = this.state.houses[i];
+      var what = lv === 5 ? '满级' : ('Lv.' + lv);
+      if (c.type === 'prop') what = lv === 5 ? '酒店' : ('第 ' + lv + ' 栋房屋');
+      this.log(p.name + ' 升级 ' + c.name + ' → ' + what + '（' + money(c.houseCost) + '）', 'build');
+      this.sfx(lv === 5 ? 'hotel' : 'build');
+      this.buzz([20, 40, 20]);
       this.emit('state');
       return true;
     },
@@ -695,7 +741,6 @@ window.DC = window.DC || {};
       p.pos = C.jailPos;
       p.inJail = true;
       p.jailTurns = 0;
-      p.doubles = 0;
       this.state.justJailed = true;
       this.sfx('jail');
       this.buzz([14, 60, 14]);
@@ -720,18 +765,18 @@ window.DC = window.DC || {};
           this.log(p.name + ' 缴纳保释金出狱', 'jail');
           return { freed: true };
         }
-        d = [U.rand(1, 6), U.rand(1, 6)];
-        this.setDice(d);
+        d = U.rand(1, 6);
+        this.setDie(d);
         this.sfx('dice');
         if (this.ui.dice) await this.ui.dice(p, d, this);
-        if (d[0] === d[1]) {
+        if (d === 6) {
           p.inJail = false;
-          this.log(p.name + ' 掷出双 ' + d[0] + '，出狱并前进', 'jail');
-          return { freed: true, dice: d };
+          this.log(p.name + ' 掷出 6，出狱并前进', 'jail');
+          return { freed: true, die: d };
         }
         p.jailTurns++;
         if (p.jailTurns >= 3) {
-          this.log(p.name + ' 三回合未掷出双数，强制保释', 'jail');
+          this.log(p.name + ' 三回合未掷出 6，强制保释', 'jail');
           await this.pay(p, null, C.jailFine, '强制保释');
           if (p.bankrupt) return { freed: false };
           p.inJail = false;
@@ -760,26 +805,26 @@ window.DC = window.DC || {};
         this.emit('state');
         return { freed: true };
       }
-      d = [U.rand(1, 6), U.rand(1, 6)];
-      this.setDice(d);
+      d = U.rand(1, 6);
+      this.setDie(d);
       this.sfx('dice');
       if (this.ui.dice) await this.ui.dice(p, d, this);
-      if (d[0] === d[1]) {
+      if (d === 6) {
         p.inJail = false;
-        this.log(p.name + ' 掷出双 ' + d[0] + '，出狱并前进', 'jail');
+        this.log(p.name + ' 掷出 6，出狱并前进', 'jail');
         this.emit('state');
-        return { freed: true, dice: d };
+        return { freed: true, die: d };
       }
       p.jailTurns++;
       if (p.jailTurns >= 3) {
-        this.log(p.name + ' 三回合未掷出双数，强制保释', 'jail');
+        this.log(p.name + ' 三回合未掷出 6，强制保释', 'jail');
         await this.pay(p, null, C.jailFine, '强制保释');
         if (p.bankrupt) return { freed: false };
         p.inJail = false;
         this.emit('state');
         return { freed: true };
       }
-      this.log(p.name + ' 没掷出双数，留在狱中（第 ' + p.jailTurns + ' 回合）', 'jail');
+      this.log(p.name + ' 没掷出 6，留在狱中（第 ' + p.jailTurns + ' 回合）', 'jail');
       this.emit('state');
       return { freed: false };
     },
@@ -895,7 +940,10 @@ window.DC = window.DC || {};
       var cands = p.props.filter(function (i) { return self.canBuild(p, i); });
       if (!cands.length) return null;
       cands.sort(function (a, b) {
-        return (CELLS[b].rents[1] / CELLS[b].houseCost) - (CELLS[a].rents[1] / CELLS[a].houseCost);
+        var ca = CELLS[a], cb = CELLS[b];
+        var ra = (ca.rents && ca.rents[1]) || (ca.mult && ca.mult[0]) || 50;
+        var rb = (cb.rents && cb.rents[1]) || (cb.mult && cb.mult[0]) || 50;
+        return (rb / (cb.houseCost || 1)) - (ra / (ca.houseCost || 1));
       });
       return cands[0];
     },
@@ -916,22 +964,15 @@ window.DC = window.DC || {};
       if (r) r(value);
     },
 
-    /* AI 回合中自动建房：在每个 AI 回合开始时调用 */
+    /* AI 仅在落到自有地时升级（与人类一致），回合开始不再自由建房 */
     async aiTurnUpkeep(p) {
-      var guard = 0;
-      while (guard++ < 8) {
-        var i = this.aiShouldBuild(p);
-        if (i === null) break;
-        if (!this.buyHouse(p, i)) break;
-        await this.delay(260);
-      }
       var self = this;
       var un = p.props.filter(function (i) { return self.canUnmortgage(p, i) && p.cash > 6000; });
       if (un.length) { this.unmortgage(p, un[0]); await this.delay(200); }
     }
   };
 
-  /* 把 AI 建房挂进回合开始 */
+  /* 回合开始：只做赎回，不再自动升级 */
   var _runTurn = Engine.prototype.runTurn;
   Engine.prototype.runTurn = async function (p, id) {
     if (p.isAI && !p.inJail) { await this.aiTurnUpkeep(p); }

@@ -230,7 +230,8 @@ button { font: inherit; color: inherit; }
 .strip {
   display: flex;
   gap: 10px;
-  padding: 8px 14px;
+  /* 底部留出玩家卡投影；overflow-x 会连带裁 y 轴 */
+  padding: 8px 14px 18px;
   overflow-x: auto;
   scrollbar-width: none;
   scroll-snap-type: x proximity;
@@ -336,8 +337,8 @@ button { font: inherit; color: inherit; }
   place-items: center;
   min-height: 0;
   min-width: 0;
-  overflow: hidden;
-  padding: 2px 12px 6px;
+  /* 底部留出棋盘立体边 + 投影；不设 overflow 避免裁切 */
+  padding: 2px 12px 28px;
 }
 
 .board {
@@ -536,18 +537,18 @@ button { font: inherit; color: inherit; }
 }
 .hub__round b { font-family: var(--font-num); color: var(--pink); }
 
-.hub__dice { display: flex; gap: calc(var(--u, 4px) * 1.8); }
+.hub__dice { display: flex; justify-content: center; }
 
 .die {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   grid-template-rows: repeat(3, 1fr);
-  width: calc(var(--u, 4px) * 10.5);
-  height: calc(var(--u, 4px) * 10.5);
+  width: calc(var(--u, 4px) * 13);
+  height: calc(var(--u, 4px) * 13);
   padding: 13%;
   gap: 8%;
   background: linear-gradient(160deg, #FFFFFF, #E9F2FF);
-  border-radius: calc(var(--u, 4px) * 2.8);
+  border-radius: calc(var(--u, 4px) * 3.4);
   box-shadow:
     inset 0 calc(var(--u, 4px) * -.9) 0 rgba(27, 42, 74, .1),
     inset 0 calc(var(--u, 4px) * .5) 0 rgba(255, 255, 255, .9),
@@ -555,7 +556,6 @@ button { font: inherit; color: inherit; }
     0 calc(var(--u, 4px) * 1.4) calc(var(--u, 4px) * 2) rgba(10, 30, 60, .25);
 }
 .hub__dice.is-rolling .die { animation: tumble 320ms var(--soft) infinite; }
-.hub__dice.is-rolling .die:last-child { animation-delay: 90ms; }
 .hub__dice.is-settled .die { animation: pop 400ms var(--pop); }
 .pip { border-radius: 50%; background: transparent; }
 .pip.on {
@@ -706,7 +706,7 @@ button { font: inherit; color: inherit; }
   display: flex;
   flex-direction: column;
   min-height: 34px;
-  margin: 4px 14px 6px;
+  margin: 0 14px 8px;
   padding: 8px 14px 9px;
   border-radius: var(--r-lg);
   background: linear-gradient(180deg, #FFFFFF, #EAF3FF);
@@ -755,19 +755,20 @@ button { font: inherit; color: inherit; }
 /* ---------- 12. 操作坞 ---------- */
 .dock {
   display: grid;
-  grid-template-columns: 1fr 1.6fr 1fr;
+  grid-template-columns: 1fr 1.5fr 1fr;
   gap: 10px;
-  padding: 4px 14px max(12px, env(safe-area-inset-bottom));
+  padding: 6px 14px max(24px, calc(env(safe-area-inset-bottom) + 12px));
 }
 
 .btn {
   position: relative;
   min-height: 54px;
+  min-width: 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
-  padding: 0 16px;
+  padding: 0 12px;
   border: 0;
   border-radius: 999px;
   background: linear-gradient(180deg, #FFFFFF, #DCEBFB);
@@ -827,9 +828,9 @@ button { font: inherit; color: inherit; }
   transform: translateY(5px);
 }
 
-.dock__main { min-height: 62px; }
-.dock__main .btn__label { font-size: 20px; letter-spacing: .04em; }
-.dock__main .ico { width: 24px; height: 24px; }
+.dock__main { min-height: 62px; min-width: 0; }
+.dock__main .btn__label { font-size: 17px; letter-spacing: .02em; white-space: nowrap; }
+.dock__main .ico { width: 22px; height: 22px; }
 .dock__main.is-waiting {
   background: linear-gradient(180deg, #E7EEF8, #CBD9EA);
   color: #7C8DA6;
@@ -837,7 +838,8 @@ button { font: inherit; color: inherit; }
   box-shadow: inset 0 2px 0 rgba(255, 255, 255, .7), 0 2px 0 rgba(21, 58, 108, .18);
   transform: translateY(4px);
 }
-.dock__side { flex-direction: column; gap: 1px; font-size: 11.5px; border-radius: 20px; }
+.dock__side { flex-direction: column; gap: 1px; font-size: 11.5px; border-radius: 20px; min-width: 0; }
+.dock__side .btn__label { white-space: nowrap; }
 .dock__side .ico { width: 20px; height: 20px; }
 
 /* ---------- 13. 弹层 ---------- */
@@ -857,7 +859,8 @@ button { font: inherit; color: inherit; }
   display: flex;
   flex-direction: column;
   max-height: 88dvh;
-  padding: 6px 0 max(16px, env(safe-area-inset-bottom));
+  /* 底部多留一点，放得下操作按钮的立体边与投影 */
+  padding: 6px 0 max(22px, calc(env(safe-area-inset-bottom) + 12px));
   background: linear-gradient(180deg, #FFFFFF, #EAF3FF);
   border-radius: var(--r-xl) var(--r-xl) 0 0;
   box-shadow: 0 -10px 0 rgba(21, 58, 108, .18), 0 -22px 44px -10px rgba(6, 22, 48, .6);
@@ -903,7 +906,8 @@ button { font: inherit; color: inherit; }
 .sheet__sub b { color: var(--pink); }
 
 .sheet__body {
-  padding: 0 20px;
+  /* 上下留出子项立体边/投影，避免被 overflow 裁切 */
+  padding: 6px 20px 12px;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
@@ -912,8 +916,8 @@ button { font: inherit; color: inherit; }
 .sheet__actions {
   display: flex;
   gap: 10px;
-  padding: 14px 20px 0;
-  margin-top: 14px;
+  padding: 16px 20px 6px;
+  margin-top: 12px;
   border-top: 2px dashed var(--line-2);
 }
 .sheet__actions .btn { flex: 1 1 0; min-width: 0; }
@@ -1102,6 +1106,69 @@ button { font: inherit; color: inherit; }
 }
 .mini:active { transform: translateY(4px); box-shadow: 0 0 0 #9DB8D8; }
 .mini--tag { box-shadow: none; background: transparent; color: var(--ink-3); display: inline-flex; align-items: center; }
+.mini--go {
+  background: linear-gradient(180deg, #FFE066, var(--gold));
+  color: var(--gold-ink);
+  box-shadow: inset 0 2px 0 rgba(255, 255, 255, .85), 0 4px 0 var(--gold-edge);
+  white-space: nowrap;
+}
+.mini--go:active { box-shadow: 0 0 0 var(--gold-edge); }
+
+.upgrade__hint {
+  margin: 0 0 12px;
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--ink-2);
+  line-height: 1.5;
+}
+.upgrade__list {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.upgrade__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: var(--r-md);
+  background: linear-gradient(180deg, #FFFFFF, #EFF6FF);
+  box-shadow: inset 0 2px 0 rgba(255, 255, 255, .95), 0 3px 0 rgba(21, 58, 108, .16);
+}
+.upgrade__meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+.upgrade__name {
+  font-size: 14px;
+  font-weight: 900;
+  color: var(--ink);
+}
+.upgrade__lv {
+  width: 100%;
+  margin-left: 22px;
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--ink-2);
+}
+.upgrade__ask {
+  margin: 14px 0 0;
+  padding: 12px 14px;
+  border-radius: var(--r-md);
+  background: linear-gradient(180deg, #FFF8E0, #FFE9A8);
+  box-shadow: inset 0 2px 0 rgba(255, 255, 255, .7);
+  font-size: 13.5px;
+  font-weight: 800;
+  color: var(--gold-ink);
+  line-height: 1.5;
+}
 
 .assets__sum {
   display: grid;
@@ -1286,14 +1353,14 @@ button { font: inherit; color: inherit; }
   text-shadow: 0 2px 0 rgba(27, 42, 74, .5);
   box-shadow: inset 0 2px 0 rgba(255, 255, 255, .5), 0 3px 0 rgba(27, 42, 74, .25);
 }
-.result__list { list-style: none; margin: 0; padding: 0; text-align: left; }
+.result__list { list-style: none; margin: 0; padding: 0 0 6px; text-align: left; }
 .result__list li {
   display: grid;
   grid-template-columns: 28px minmax(0, 1fr) auto auto;
   align-items: center;
   gap: 10px;
   padding: 11px 13px;
-  margin-bottom: 8px;
+  margin-bottom: 12px;
   border-radius: var(--r-md);
   background: linear-gradient(180deg, #FFFFFF, #EFF6FF);
   box-shadow: inset 0 2px 0 rgba(255, 255, 255, .95), 0 4px 0 rgba(21, 58, 108, .18);
@@ -1493,17 +1560,17 @@ button { font: inherit; color: inherit; }
   .brand__name { font-size: 16px; }
   .brand__sub { display: none; }
   .icon-btn { width: 42px; height: 42px; border-radius: 14px; }
-  .strip { padding: 5px 12px; gap: 8px; }
+  .strip { padding: 5px 12px 16px; gap: 8px; }
   .chip { min-width: 118px; padding: 5px 11px 6px 6px; grid-template-columns: 30px minmax(0, 1fr); }
   .chip__dot { width: 30px; height: 30px; border-radius: 10px; }
   .chip__meta { display: none; }
   .chip__cash { font-size: 15px; }
-  .ticker { padding: 6px 12px 7px; margin: 3px 12px 4px; }
+  .ticker { padding: 6px 12px 7px; margin: 0 12px 6px; }
   .ticker__head { padding-bottom: 4px; margin-bottom: 2px; }
-  .dock { padding: 2px 12px max(6px, env(safe-area-inset-bottom)); gap: 8px; }
+  .dock { padding: 2px 12px max(20px, calc(env(safe-area-inset-bottom) + 8px)); gap: 6px; }
   .btn { min-height: 46px; }
   .dock__main { min-height: 52px; }
-  .dock__main .btn__label { font-size: 18px; }
+  .dock__main .btn__label { font-size: 15px; }
   .dock__side { font-size: 11px; }
 }
 
@@ -1520,10 +1587,10 @@ button { font: inherit; color: inherit; }
     max-width: none;
   }
   .hud { grid-area: hud; padding: max(6px, env(safe-area-inset-top)) 12px 0; }
-  .strip { grid-area: strip; padding: 4px 12px; }
-  .stage { grid-area: stage; padding: 6px 0 6px 12px; }
-  .ticker { grid-area: ticker; margin: 0 12px 4px; }
-  .dock { grid-area: dock; grid-template-columns: 1fr 1.4fr 1fr; padding: 4px 12px max(8px, env(safe-area-inset-bottom)); }
+  .strip { grid-area: strip; padding: 4px 12px 16px; }
+  .stage { grid-area: stage; padding: 6px 0 24px 12px; }
+  .ticker { grid-area: ticker; margin: 0 12px 6px; }
+  .dock { grid-area: dock; grid-template-columns: 1fr 1.4fr 1fr; padding: 4px 12px max(20px, calc(env(safe-area-inset-bottom) + 8px)); }
   .dock__main { min-height: 48px; }
   .btn { min-height: 46px; }
   .chip { min-width: 116px; padding: 5px 10px 6px 6px; }
@@ -1534,16 +1601,26 @@ button { font: inherit; color: inherit; }
   .chip { min-width: 112px; }
   .dock { grid-template-columns: 1fr 1.4fr 1fr; gap: 7px; padding-inline: 10px; }
   .dock__side { font-size: 11px; }
+  .dock__main .btn__label { font-size: 15px; }
 }
 
 /* ---------- 22. 无障碍 ---------- */
+/* 只压低「装饰性无限循环」动画，保留游戏一次性动效（跳跃、骰子、盖章、金币等） */
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after {
-    animation-duration: .001ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: .001ms !important;
+  .hub__rays, .brand__mark, .hub__frame, .result__crown,
+  .bg__sun, .bg__rays, .bg__cloud, .chip.is-active .chip__dot,
+  .token.is-active .token__face, .token.is-active .token__ring {
+    animation: none;
   }
-  .hub__rays, .brand__mark, .hub__frame, .result__crown, .bg__sun, .bg__rays, .bg__cloud { animation: none; }
+}
+
+/* 用户在设置里手动打开「减少动画」时，再整体降级 */
+.app.reduce-motion *,
+.app.reduce-motion *::before,
+.app.reduce-motion *::after {
+  animation-duration: .001ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: .001ms !important;
 }
 
 @media (prefers-contrast: more) {

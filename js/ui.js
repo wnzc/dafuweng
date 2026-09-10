@@ -59,15 +59,20 @@ window.DC = window.DC || {};
       this.buildBoard();
       this.buildHub();
       this.bindChrome();
+      this.applyMotion();
 
       // 棋盘取「可用区域」的正方形边长：任何视口下都不横滚、不裁切
       var stage = document.querySelector('.stage');
       var fit = function () {
         var cs = getComputedStyle(stage);
-        var w = stage.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+        var padX = parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight);
+        var padY = parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom);
+        var w = stage.clientWidth - padX;
         var landscape = window.matchMedia('(orientation: landscape) and (max-height: 560px)').matches;
-        var chrome = self.els.hud.offsetHeight + self.els.strip.offsetHeight + self.els.dock.offsetHeight + 58;
-        var availH = window.innerHeight - (landscape ? 26 : chrome);
+        var chrome = self.els.hud.offsetHeight + self.els.strip.offsetHeight + self.els.dock.offsetHeight;
+        // 保留战报最小高度 + 底部投影余量，其余都给棋盘
+        var reserve = landscape ? 18 : 48;
+        var availH = window.innerHeight - chrome - reserve - Math.max(0, padY - 10);
         var side = Math.floor(Math.min(w, availH, 640));
         if (!(side > 100)) return;
         var bcs = getComputedStyle(self.els.board);
@@ -111,12 +116,41 @@ window.DC = window.DC || {};
       });
       this.els.btnRoll.setAttribute('aria-live', 'polite');
       this.syncSound();
+      this.bindUiFeedback();
+    },
+
+    /* 全局按钮反馈：音效 + 轻震动（委托，覆盖动态弹层） */
+    bindUiFeedback: function () {
+      var e = this.e;
+      var lastAt = 0;
+      var pick = function (t) {
+        if (!t || t.nodeType !== 1) return null;
+        return t.closest && t.closest('button, [role="button"], .cell, .chip, .switch, .tab, .mini, .menu__item');
+      };
+      var fire = function (ev) {
+        if (ev.button !== undefined && ev.button !== 0) return;
+        var btn = pick(ev.target);
+        if (!btn) return;
+        if (btn.disabled || btn.classList.contains('is-disabled') || btn.getAttribute('aria-disabled') === 'true') return;
+        var t = performance.now();
+        if (t - lastAt < 50) return;
+        lastAt = t;
+        if (e.settings.sound && DC.audio && DC.audio.click) DC.audio.click();
+        if (e.settings.haptics && DC.haptics) DC.haptics.tap();
+      };
+      document.addEventListener('pointerdown', fire, { capture: true, passive: true });
+      document.addEventListener('click', fire, { capture: true, passive: true });
     },
 
     syncSound: function () {
       this.els.btnSound.innerHTML = icon(this.e.settings.sound ? 'i-sound' : 'i-mute');
       this.els.btnSound.setAttribute('aria-label', this.e.settings.sound ? '关闭音效' : '开启音效');
       this.els.btnSound.setAttribute('aria-pressed', String(!!this.e.settings.sound));
+    },
+
+    applyMotion: function () {
+      var on = !!this.e.settings.reducedMotion;
+      if (this.els.app) this.els.app.classList.toggle('reduce-motion', on);
     },
 
     /* ---------------- 棋盘 ---------------- */
@@ -172,7 +206,6 @@ window.DC = window.DC || {};
         '<div class="hub__frame">' +
           '<div class="hub__round">第 <b id="hubRound">1</b> 回合</div>' +
           '<div class="hub__dice" id="hubDice" aria-hidden="true">' +
-            '<span class="die" data-v="0">' + '<i class="pip"></i>'.repeat(9) + '</span>' +
             '<span class="die" data-v="0">' + '<i class="pip"></i>'.repeat(9) + '</span>' +
           '</div>' +
           '<div class="hub__who" id="hubWho">准备开始</div>' +
@@ -310,9 +343,7 @@ window.DC = window.DC || {};
       this.els.hubPot.textContent = '罚款池 ' + money(s.pot);
       this.els.hubWho.textContent = s.over ? '对局结束' : (p ? p.name + ' 的回合' : '');
       this.els.hubWho.style.setProperty('--c', p ? p.color : '#C9A227');
-      var dice = this.els.hubDice.children;
-      this.setDie(dice[0], s.dice[0]);
-      this.setDie(dice[1], s.dice[1]);
+      this.setDie(this.els.hubDice.children[0], s.die);
     },
 
     setDie: function (node, v) {
@@ -320,6 +351,22 @@ window.DC = window.DC || {};
       var pips = node.children;
       var on = PIPS[v] || [];
       for (var i = 0; i < pips.length; i++) pips[i].classList.toggle('on', on.indexOf(i) >= 0);
+    },
+
+    houseLabel: function (h) {
+      if (!h) return 'Lv.0';
+      if (h >= 5) return '满级';
+      return 'Lv.' + h;
+    },
+
+    nextHouseLabel: function (h) {
+      var n = (h || 0) + 1;
+      return n >= 5 ? '满级' : 'Lv.' + n;
+    },
+
+    humanPlayer: function () {
+      var s = this.e.state;
+      return s && s.players.filter(function (p) { return !p.isAI && !p.bankrupt; })[0];
     },
 
     renderDock: function () {
@@ -355,13 +402,13 @@ window.DC = window.DC || {};
     },
 
     /* ---------------- 骰子动画 ---------------- */
-    dice: function (player, vals) {
-      var self = this, nodes = this.els.hubDice.children;
+    dice: function (player, val) {
+      var self = this, node = this.els.hubDice.children[0];
       this.els.hubDice.classList.add('is-rolling');
       this.els.hubWho.textContent = player.name + ' 掷骰…';
       var reduced = this.e.settings.reducedMotion;
       if (reduced) {
-        this.setDie(nodes[0], vals[0]); this.setDie(nodes[1], vals[1]);
+        this.setDie(node, val);
         this.els.hubDice.classList.remove('is-rolling');
         return Promise.resolve();
       }
@@ -369,12 +416,10 @@ window.DC = window.DC || {};
       return new Promise(function (res) {
         var tick = function (now) {
           if (now - t0 < dur) {
-            self.setDie(nodes[0], U.rand(1, 6));
-            self.setDie(nodes[1], U.rand(1, 6));
+            self.setDie(node, U.rand(1, 6));
             requestAnimationFrame(tick);
           } else {
-            self.setDie(nodes[0], vals[0]);
-            self.setDie(nodes[1], vals[1]);
+            self.setDie(node, val);
             self.els.hubDice.classList.remove('is-rolling');
             self.els.hubDice.classList.add('is-settled');
             setTimeout(function () { self.els.hubDice.classList.remove('is-settled'); }, 320);
@@ -591,9 +636,34 @@ window.DC = window.DC || {};
     onAsk: function (a) {
       if (!a) return;
       if (a.type === 'buy') this.askBuy(a);
+      else if (a.type === 'upgrade') this.askUpgrade(a);
       else if (a.type === 'jail') this.askJail(a);
       else if (a.type === 'auction') this.askAuction(a);
       else if (a.type === 'raise') this.askRaise(a);
+    },
+
+    askUpgrade: function (a) {
+      var self = this, e = this.e;
+      var cell = CELLS[a.cellId];
+      var p = e.player(a.playerId);
+      var lv = a.level || 0;
+      var body = el('div', 'deed');
+      body.innerHTML = this.deedHtml(cell, { compact: false, owner: p });
+      var note = el('p', 'upgrade__ask');
+      note.textContent = '停在自己的地上，可花费 ' + money(a.cost) + ' 升级到 ' + self.nextHouseLabel(lv) +
+        '（当前 ' + self.houseLabel(lv) + '）。升级后租金更高。';
+      body.appendChild(note);
+      this.sheet({
+        eyebrow: '升级 · UPGRADE',
+        title: esc(cell.name),
+        sub: '是否升级当前土地？',
+        body: body,
+        dismissible: false,
+        actions: [
+          { label: '暂不升级', kind: 'ghost', onClick: function () { e.answer('skip'); } },
+          { label: '升级 ' + money(a.cost), kind: 'primary', icon: 'i-upgrade', disabled: p.cash < a.cost, onClick: function () { e.answer('upgrade'); } }
+        ]
+      });
     },
 
     askBuy: function (a) {
@@ -620,14 +690,14 @@ window.DC = window.DC || {};
       var body = el('div', 'stack');
       body.innerHTML =
         '<div class="notice notice--jail">' + icon('i-jail') +
-        '<div><b>你在狱中</b><p>已停留 ' + a.turns + ' / ' + a.maxTurns + ' 回合。掷出双数即可出狱并前进。</p></div></div>';
+        '<div><b>你在狱中</b><p>已停留 ' + a.turns + ' / ' + a.maxTurns + ' 回合。掷出 6 即可出狱并前进。</p></div></div>';
       this.sheet({
         eyebrow: '监狱 · JAIL',
         title: '如何离开？',
         body: body,
         dismissible: false,
         actions: [
-          { label: '掷骰求双', kind: 'primary', icon: 'i-dice', onClick: function () { e.answer('roll'); } },
+          { label: '掷骰求 6', kind: 'primary', icon: 'i-dice', onClick: function () { e.answer('roll'); } },
           { label: '用出狱许可证' + (a.cards ? '（' + a.cards + '）' : '（无）'), kind: 'ghost', disabled: !a.cards, onClick: function () { e.answer('card'); } },
           { label: '缴纳保释金 ' + money(a.fine), kind: 'ghost', disabled: p.cash < a.fine, onClick: function () { e.answer('pay'); } }
         ]
@@ -780,23 +850,30 @@ window.DC = window.DC || {};
           this.rentRow('酒店', cell.rents[5], 'hotel');
       } else if (cell.type === 'rail') {
         rows = cell.rents.map(function (r, i) { return this.rentRow((i + 1) + ' 座车站', r); }, this).join('');
+        rows += this.rentRow('每级升级', '+¥300', 'double');
       } else if (cell.type === 'util') {
         rows = this.rentRow('持有 1 家', '骰子 ×' + cell.mult[0]) + this.rentRow('持有 2 家', '骰子 ×' + cell.mult[1]);
+        rows += this.rentRow('每级升级', '倍率 +50', 'double');
       }
 
       var priceLine = cell.price
         ? '<div class="deed__price"><span>售价</span><b class="mono">' + money(cell.price) + '</b></div>'
         : (cell.type === 'tax' ? '<div class="deed__price"><span>税率</span><b class="mono">现金 10%</b></div>' : '');
 
+      var houseLine = cell.houseCost
+        ? '<div class="deed__price deed__price--sub"><span>升级费用</span><b class="mono">' + money(cell.houseCost) + '</b></div>'
+        : '';
+      var lvText = houses ? (houses === 5 && cell.type === 'prop' ? '，建有酒店' : '，' + this.houseLabel(houses)) : '';
+
       return '' +
         '<div class="deed__band" style="--gc:' + color + '"><span class="deed__chip"></span><span>' + esc(label) + '</span></div>' +
         (opts.compact ? '' : '<h3 class="deed__name">' + esc(cell.name) + '</h3>') +
         priceLine +
         (opts.mini ? '' :
-          (cell.houseCost ? '<div class="deed__price deed__price--sub"><span>每栋房屋</span><b class="mono">' + money(cell.houseCost) + '</b></div>' : '') +
+          houseLine +
           (rows ? '<table class="deed__table">' + rows + '</table>' : '<p class="deed__desc">' + esc(cell.desc || '') + '</p>') +
-          (owner ? '<div class="deed__owner" style="--oc:' + owner.color + '"><span class="dot"></span>' + esc(owner.name) + ' 持有' + (houses ? '，' + (houses === 5 ? '建有酒店' : '建有 ' + houses + ' 栋房屋') : '') + (s.mortgaged[cell.i] ? '（已抵押）' : '') + '</div>' : '') +
-          (cell.houseCost ? '<div class="deed__note">抵押可得 ' + money(Math.round(cell.price * C.mortgageRate)) + ' · 赎回付 ' + money(Math.round(cell.price * C.mortgageRate * C.unmortgageRate)) + '</div>' : '')
+          (owner ? '<div class="deed__owner" style="--oc:' + owner.color + '"><span class="dot"></span>' + esc(owner.name) + ' 持有' + lvText + (s.mortgaged[cell.i] ? '（已抵押）' : '') + '</div>' : '') +
+          (cell.houseCost && cell.price ? '<div class="deed__note">落在自有地上可升级 · 抵押可得 ' + money(Math.round(cell.price * C.mortgageRate)) + '</div>' : '')
         );
     },
 
@@ -810,15 +887,17 @@ window.DC = window.DC || {};
       body.innerHTML = this.deedHtml(cell, {});
       var actions = [{ label: '知道了', kind: 'primary' }];
       var p = s.players[s.current];
-      if (p && !p.isAI && s.owners[i] === p.id) {
-        if (e.canBuild(p, i)) {
-          actions.unshift({
-            label: '建' + (s.houses[i] === 4 ? '酒店' : '房屋') + ' ' + money(cell.houseCost), kind: 'primary', icon: 'i-house',
-            onClick: function () { e.buyHouse(p, i); }
-          });
-        }
+      var hint = '';
+      if (p && !p.isAI && s.owners[i] === p.id && e.canUpgradeLevel(p, i) && cell.houseCost) {
+        hint = '再次落在这里时可升级（' + money(cell.houseCost) + '）';
       }
-      this.sheet({ eyebrow: DC.TYPE_LABEL[cell.type] + ' · ' + (cell.type === 'prop' ? cell.group + ' 组' : ''), title: esc(cell.name), body: body, actions: actions });
+      this.sheet({
+        eyebrow: DC.TYPE_LABEL[cell.type] + ' · ' + (cell.type === 'prop' ? cell.group + ' 组' : ''),
+        title: esc(cell.name),
+        sub: hint || undefined,
+        body: body,
+        actions: actions
+      });
     },
 
     /* ---------------- 资产 ---------------- */
@@ -853,14 +932,13 @@ window.DC = window.DC || {};
         var m = s.mortgaged[i];
         var acts = '';
         if (isMine) {
-          if (e.canBuild(p, i)) acts += '<button class="mini" data-act="build" data-i="' + i + '">建房 ' + money(c.houseCost) + '</button>';
-          if (e.canSellHouse(p, i)) acts += '<button class="mini" data-act="sell" data-i="' + i + '">拆房 +' + money(Math.round(c.houseCost * C.houseSellRate)) + '</button>';
+          if (e.canSellHouse(p, i)) acts += '<button class="mini" data-act="sell" data-i="' + i + '">拆除 +' + money(Math.round((c.houseCost || 0) * C.houseSellRate)) + '</button>';
           if (e.canMortgage(p, i)) acts += '<button class="mini" data-act="mortgage" data-i="' + i + '">抵押 +' + money(Math.round(c.price * C.mortgageRate)) + '</button>';
           if (e.canUnmortgage(p, i)) acts += '<button class="mini" data-act="unmortgage" data-i="' + i + '">赎回 ' + money(Math.round(c.price * C.mortgageRate * C.unmortgageRate)) + '</button>';
         }
         return '<li class="' + (m ? 'is-mortgaged' : '') + '">' +
           '<span class="assets__name"><i class="swatch" style="--gc:' + (c.type === 'prop' ? DC.GROUPS[c.group].color : DC.TYPE_COLOR[c.type]) + '"></i>' + esc(c.name) +
-          (h ? ' <i class="dot-h">×' + h + '</i>' : '') + (m ? ' <i class="tag">抵押中</i>' : '') + '</span>' +
+          (h ? ' <i class="dot-h">' + self.houseLabel(h) + '</i>' : '') + (m ? ' <i class="tag">抵押中</i>' : '') + '</span>' +
           '<span class="assets__acts">' + acts + '</span></li>';
       }).join('');
       box.innerHTML =
@@ -896,10 +974,10 @@ window.DC = window.DC || {};
       var html =
         '<div class="rules">' +
         '<h3>目标</h3><p>让其他玩家全部破产，最后剩下的玩家获胜。也可在结算时比较总资产排名。</p>' +
-        '<h3>回合</h3><p>掷两枚骰子前进。掷出双数可以再掷一次；连续三次双数会被送进监狱。</p>' +
-        '<h3>买地与租金</h3><p>停在无主地产可以选择买下或转入拍卖。停在他人地产需付租金：集齐同组全部地产租金翻倍，房屋与酒店进一步提高租金。</p>' +
-        '<h3>建造与抵押</h3><p>集齐同组且组内无抵押时可建房，同组房屋数量差不超过 1 栋，第 5 栋为酒店。现金紧张时可拆房（收回半价）或抵押地产（得半价），赎回需付 110%。</p>' +
-        '<h3>监狱</h3><p>入狱后可缴纳保释金、使用出狱许可证，或掷骰求双。三回合未掷出双数将强制保释。</p>' +
+        '<h3>回合</h3><p>掷一枚骰子前进对应步数。</p>' +
+        '<h3>买地与租金</h3><p>停在无主地产可以选择买下或转入拍卖。停在他人地产需付租金：集齐同组全部地产空地租金翻倍，升级后租金更高。</p>' +
+        '<h3>升级土地</h3><p>再次停在<strong>自己已买下</strong>的地块（含车站、水厂、电厂）时，会提示是否升级。地产、车站、公用事业都可升到满级；也可在地契里拆除或抵押。</p>' +
+        '<h3>监狱</h3><p>入狱后可缴纳保释金、使用出狱许可证，或掷骰求 6。三回合未掷出 6 将强制保释。</p>' +
         '<h3>卡牌与税收</h3><p>机会与命运会带来收益、罚款、位移或入狱。缴纳的罚款会进入免费停车场的奖池，停在停车场即可全部领取。</p>' +
         '<h3>破产</h3><p>现金不足时必须变卖资产；仍无法支付则宣告破产，产业转给债主（或由银行收回）。</p>' +
         '</div>';
@@ -911,7 +989,9 @@ window.DC = window.DC || {};
       var body = el('div', 'settings');
       body.innerHTML =
         '<div class="row"><span>音效</span><button type="button" class="switch" id="swSound" role="switch"></button></div>' +
+        '<div class="row"><span>背景音乐</span><button type="button" class="switch" id="swMusic" role="switch"></button></div>' +
         '<div class="row"><span>震动反馈</span><button type="button" class="switch" id="swHaptic" role="switch"></button></div>' +
+        '<div class="row"><span>减少动画</span><button type="button" class="switch" id="swMotion" role="switch"></button></div>' +
         '<div class="row"><span>动画速度</span><div class="seg" id="segSpeed">' +
           '<button type="button" data-v="0.65">慢</button><button type="button" data-v="1">标准</button><button type="button" data-v="1.7">快</button>' +
         '</div></div>' +
@@ -919,12 +999,18 @@ window.DC = window.DC || {};
       this.sheet({ eyebrow: '设置 · SETTINGS', title: '偏好', body: body, actions: [{ label: '关闭', kind: 'ghost' }] });
 
       var swS = document.getElementById('swSound');
+      var swM = document.getElementById('swMusic');
       var swH = document.getElementById('swHaptic');
+      var swR = document.getElementById('swMotion');
       var sync = function () {
         swS.classList.toggle('is-on', e.settings.sound);
         swS.setAttribute('aria-checked', String(e.settings.sound));
+        swM.classList.toggle('is-on', !!e.settings.music);
+        swM.setAttribute('aria-checked', String(!!e.settings.music));
         swH.classList.toggle('is-on', e.settings.haptics);
         swH.setAttribute('aria-checked', String(e.settings.haptics));
+        swR.classList.toggle('is-on', !!e.settings.reducedMotion);
+        swR.setAttribute('aria-checked', String(!!e.settings.reducedMotion));
       };
       sync();
       swS.addEventListener('click', function () {
@@ -933,8 +1019,20 @@ window.DC = window.DC || {};
         if (DC.saveSettings) DC.saveSettings();
         self.syncSound(); sync();
       });
+      swM.addEventListener('click', function () {
+        e.settings.music = !e.settings.music;
+        if (DC.audio.setMusic) DC.audio.setMusic(e.settings.music);
+        if (DC.saveSettings) DC.saveSettings();
+        sync();
+      });
       swH.addEventListener('click', function () {
         e.settings.haptics = !e.settings.haptics;
+        if (DC.saveSettings) DC.saveSettings();
+        sync();
+      });
+      swR.addEventListener('click', function () {
+        e.settings.reducedMotion = !e.settings.reducedMotion;
+        self.applyMotion();
         if (DC.saveSettings) DC.saveSettings();
         sync();
       });
@@ -982,8 +1080,8 @@ window.DC = window.DC || {};
         '</div>' +
         '<ul class="start__hint">' +
           '<li>' + icon('i-coin') + '起步资金 ' + money(C.startCash) + '，经过起点领 ' + money(C.goSalary) + '</li>' +
-          '<li>' + icon('i-house') + '集齐同组可建房，第 5 栋是酒店</li>' +
-          '<li>' + icon('i-jail') + '保释金 ' + money(C.jailFine) + '，也可以掷双出狱</li>' +
+          '<li>' + icon('i-house') + '再次停在自己的地上，可升级提高租金</li>' +
+          '<li>' + icon('i-jail') + '保释金 ' + money(C.jailFine) + '，也可以掷 6 出狱</li>' +
         '</ul>';
       var actions = [{ label: '开始新对局', kind: 'primary', icon: 'i-dice', onClick: function () { self.startGame(count); } }];
       if (save) {
@@ -1014,6 +1112,8 @@ window.DC = window.DC || {};
       this.rebuildTokens();
       this.closeSheet();
       DC.audio.unlock();
+      if (DC.audio.startMusic) DC.audio.startMusic();
+      if (DC.audio.start) DC.audio.start();
       this.e.start();
     },
 
@@ -1024,6 +1124,7 @@ window.DC = window.DC || {};
       this.rebuildTokens();
       this.closeSheet();
       DC.audio.unlock();
+      if (DC.audio.startMusic) DC.audio.startMusic();
       this.e.start();
     },
 

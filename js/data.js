@@ -8,7 +8,7 @@ window.DC = window.DC || {};
   'use strict';
 
   DC.CONFIG = {
-    version: '1.0.0',
+    version: '1.1.0',
     boardSize: 24,
     startCash: 15000,
     goSalary: 2000,
@@ -69,23 +69,23 @@ window.DC = window.DC || {};
     { i: 2,  name: '命运',     short: '命运',   type: 'fate',     desc: '抽一张命运卡' },
     prop(3,  '静安寺', '静安寺', 'A', 600,  500,  [20, 100, 300, 900, 1600, 2500]),
     { i: 4,  name: '所得税',   short: '所得税', type: 'tax',      rate: 0.1, min: 1000, desc: '缴纳现金的 10%' },
-    { i: 5,  name: '北站',     short: '北站',   type: 'rail',     price: 2000, rents: [250, 500, 1000, 2000] },
+    { i: 5,  name: '北站',     short: '北站',   type: 'rail',     price: 2000, houseCost: 1000, rents: [250, 500, 1000, 2000] },
     { i: 6,  name: '监狱',     short: '监狱',   type: 'jail',     desc: '探监 / 关押' },
     prop(7,  '霞飞路', '霞飞路', 'B', 1000, 500,  [60, 300, 900, 2700, 4000, 5500]),
     { i: 8,  name: '机会',     short: '机会',   type: 'chance',   desc: '抽一张机会卡' },
     prop(9,  '复兴路', '复兴路', 'B', 1000, 500,  [60, 300, 900, 2700, 4000, 5500]),
-    { i: 10, name: '自来水厂', short: '水厂',   type: 'util',     price: 1500, mult: [40, 100] },
+    { i: 10, name: '自来水厂', short: '水厂',   type: 'util',     price: 1500, houseCost: 1000, mult: [80, 200] },
     prop(11, '南京路', '南京路', 'C', 1400, 1000, [100, 500, 1500, 4500, 6250, 7500]),
     { i: 12, name: '免费停车', short: '停车场', type: 'parking',  desc: '领取罚款池' },
     prop(13, '外滩',   '外滩',   'C', 1400, 1000, [100, 500, 1500, 4500, 6250, 7500]),
     { i: 14, name: '命运',     short: '命运',   type: 'fate',     desc: '抽一张命运卡' },
-    { i: 15, name: '电力公司', short: '电厂',   type: 'util',     price: 1500, mult: [40, 100] },
-    { i: 16, name: '西站',     short: '西站',   type: 'rail',     price: 2000, rents: [250, 500, 1000, 2000] },
+    { i: 15, name: '电力公司', short: '电厂',   type: 'util',     price: 1500, houseCost: 1000, mult: [80, 200] },
+    { i: 16, name: '西站',     short: '西站',   type: 'rail',     price: 2000, houseCost: 1000, rents: [250, 500, 1000, 2000] },
     prop(17, '淮海路', '淮海路', 'D', 1800, 1000, [140, 700, 2000, 5500, 7500, 9500]),
     { i: 18, name: '入狱',     short: '入狱',   type: 'gotojail', desc: '直接送往监狱' },
     prop(19, '四川路', '四川路', 'D', 1800, 1000, [140, 700, 2000, 5500, 7500, 9500]),
     { i: 20, name: '机会',     short: '机会',   type: 'chance',   desc: '抽一张机会卡' },
-    { i: 21, name: '东站',     short: '东站',   type: 'rail',     price: 2000, rents: [250, 500, 1000, 2000] },
+    { i: 21, name: '东站',     short: '东站',   type: 'rail',     price: 2000, houseCost: 1000, rents: [250, 500, 1000, 2000] },
     prop(22, '城隍庙', '城隍庙', 'E', 2200, 1500, [180, 900, 2500, 7000, 8750, 10500]),
     prop(23, '愚园路', '愚园路', 'E', 2200, 1500, [180, 900, 2500, 7000, 8750, 10500])
   ];

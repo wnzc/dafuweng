@@ -19,7 +19,7 @@
   function saveSettings(s) {
     try {
       localStorage.setItem(SETTINGS_KEY, JSON.stringify({
-        sound: s.sound, haptics: s.haptics, speed: s.speed
+        sound: s.sound, music: s.music, haptics: s.haptics, speed: s.speed, reducedMotion: s.reducedMotion
       }));
     } catch (e) {}
   }
@@ -33,7 +33,9 @@
 
     ui.init();
     DC.audio.setEnabled(engine.settings.sound);
+    if (DC.audio.setMusic) DC.audio.setMusic(engine.settings.music !== false);
     ui.syncSound();
+    ui.applyMotion();
 
     // 供 UI 在设置变化时持久化
     DC.saveSettings = function () { saveSettings(engine.settings); };

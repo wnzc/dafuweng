@@ -7,7 +7,10 @@ const PORT = process.env.CDP_PORT || 9333;
 async function findPage() {
   const res = await fetch(`http://127.0.0.1:${PORT}/json/list`);
   const list = await res.json();
-  const page = list.find(t => t.type === 'page' && t.webSocketDebuggerUrl);
+  const want = process.env.CDP_URL || '127.0.0.1:8765';
+  const page = list.find(t => t.type === 'page' && t.webSocketDebuggerUrl && t.url.includes(want))
+            || list.find(t => t.type === 'page' && t.webSocketDebuggerUrl && /^https?:/.test(t.url) && !t.url.includes('adguard'))
+            || list.find(t => t.type === 'page' && t.webSocketDebuggerUrl);
   if (!page) throw new Error('no page target');
   return page;
 }
