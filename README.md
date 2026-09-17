@@ -58,7 +58,7 @@ js/ui.js          渲染、骰子动画、弹层（地契 / 拍卖 / 筹款 / �
 js/main.js        启动与偏好设置
 docs/…            设计规格
 tools/            开发期验证脚本（可选，不影响游戏运行）
-tools/make-cert.sh  生成本地调试用自签 HTTPS 证书（证书不入库）
+tools/make-cert.sh  可选：生成本地调试用自签 HTTPS 证书（默认不需要，证书不入库）
 ```
 
 ## 设计说明
@@ -77,16 +77,24 @@ tools/make-cert.sh  生成本地调试用自签 HTTPS 证书（证书不入库�
 
 ## 开发期验证（可选）
 
-### 手机上跑真机（震动反馈需要 HTTPS）
+### 手机上跑真机
 
-`navigator.vibrate` 只在安全上下文开放，所以局域网调试必须走 HTTPS：
+直接起服务即可，**默认纯 HTTP，不需要任何证书**：
 
 ```bash
-bash tools/make-cert.sh       # 生成自签证书（不入库；换网络后重跑，脚本会重新探测本机 IP）
-node tools/serve-https.mjs    # → https://<本机IP>:8766
+node tools/serve-https.mjs    # → http://<本机IP>:8766
 ```
 
-首次需在手机上安装并信任 `.cert/cert.pem`（iOS：设置 → 通用 → 关于本机 → 证书信任设置），换新证书后要重做一次。
+存档走 `localStorage`、音效走 WebAudio，都不依赖安全上下文，日常真机调试这样就够了。
+
+只有一种情况才需要 HTTPS——**在 Android 手机上验证震动反馈**。`navigator.vibrate` 要求安全上下文（`http://<局域网IP>` 不算，`http://localhost` 才算），而且只有 Chromium 内核实现了这个 API：iOS / Safari 全系从未实现，在 iPhone 上走 HTTPS 也不会震。这时才生成自签证书：
+
+```bash
+bash tools/make-cert.sh       # 自动探测本机所有 IP 写入 SAN；不入库，换网络后重跑
+node tools/serve-https.mjs    # 检测到证书就自动切到 https://<本机IP>:8766
+```
+
+首次要在手机上安装并信任 `.cert/cert.pem`，换网络或换证书后要重做一次——嫌麻烦就删掉 `.cert/`，服务会自动降级回 HTTP。
 
 ### 无人值守驱动 / 截图
 

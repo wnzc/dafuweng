@@ -1,18 +1,21 @@
 #!/usr/bin/env bash
-# 生成本地调试用的自签 HTTPS 证书（.cert/key.pem + .cert/cert.pem）
+# 【可选】生成本地调试用的自签 HTTPS 证书（.cert/key.pem + .cert/cert.pem）
 #
-# 为什么需要：tools/serve-https.mjs 必须跑 HTTPS，手机上的震动反馈
-# （navigator.vibrate）才可用 —— 该 API 只在安全上下文里开放。
+# 平时不需要它：tools/serve-https.mjs 默认走纯 HTTP 就能真机调试
+# （存档、音效、游戏本体都不依赖安全上下文）。
+#
+# 只有一种情况需要 HTTPS：在 **Android 手机上** 验证震动反馈。
+# navigator.vibrate 要求安全上下文，且只有 Chromium 内核实现了它 ——
+# iOS / Safari 全系从未实现，在 iPhone 上有没有 HTTPS 都不会震。
 #
 # 证书不纳入 git（见 .gitignore）。换网络 / 换设备后重跑一次即可：
 # 脚本会自动把本机当前所有 IPv4 写进 SAN，避免「证书与访问地址不匹配」。
 #
 # 用法：bash tools/make-cert.sh
 #
-# 装到手机上（iPhone）：
-#   1. AirDrop 或隔空把 .cert/cert.pem 传过去，安装描述文件
-#   2. 设置 → 通用 → 关于本机 → 证书信任设置 → 打开该证书的开关
-#   换新证书后这两步要重做一次。
+# 装到手机上（Android）：把 .cert/cert.pem 传到手机，
+#   设置 → 安全 → 加密与凭据 → 安装证书 → CA 证书。
+#   换新证书后要重装一次。不想用了直接删掉 .cert/ 即可，服务会自动降级为 HTTP。
 
 set -euo pipefail
 cd "$(dirname "$0")/.."
