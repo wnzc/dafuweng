@@ -33,6 +33,8 @@ const GAMES = +arg('games', 12);
 const MAX_ROUNDS = +arg('rounds', 400);
 const SEED0 = +arg('seed', 1);
 const VERBOSE = argv.includes('--verbose');
+// 技能卡默认开启；--skills=0 关掉后跑一遍，可对比对局长度变化
+const SKILLS = arg('skills', '1') !== '0';
 
 /* ---------------- 种子随机 ---------------- */
 function mulberry32(seed) {
@@ -83,7 +85,7 @@ function makeEngine(DC, { humanPolicy, onState, settings }) {
   const stats = { asks: 0, byType: {} };
   const cov = {};                      // 路径覆盖：证明这些规则分支真被跑到了
 
-  ['runAuction', 'drawCard', 'declareBankrupt', 'sendToJail', 'buyHouse', 'sellHouse',
+  ['runAuction', 'drawCard', 'settleSkillCard', 'declareBankrupt', 'sendToJail', 'buyHouse', 'sellHouse',
     'mortgage', 'unmortgage', 'buy'].forEach((name) => {
     const orig = eng[name];
     eng[name] = function () { cov[name] = (cov[name] || 0) + 1; return orig.apply(this, arguments); };
@@ -290,14 +292,14 @@ function makeChecker(world) {
 }
 
 /* ---------------- 跑一局 ---------------- */
-async function playGame(seed, policyName, checker, world, rounds, classic = true) {
+async function playGame(seed, policyName, checker, world, rounds, classic = true, skills = true) {
   const { DC } = world;
   const policy = POLICIES[policyName];
   const fails = [];
 
   const { eng, stats, cov } = makeEngine(DC, {
     humanPolicy: (a, e) => policy(a, e),
-    settings: { classicRules: classic },
+    settings: { classicRules: classic, skillCards: skills },
     onState: (e) => {
       if (e.state.__capped) return;
       checker(e, `第 ${e.state.round} 回合`, (m) => fails.push(m));
@@ -317,7 +319,7 @@ async function playGame(seed, policyName, checker, world, rounds, classic = true
   const s = eng.state;
 
   return {
-    seed, policy: policyName, over: s.over, capped: !!s.__capped, classic,
+    seed, policy: policyName, over: s.over, capped: !!s.__capped, classic, skills,
     round: s.round, asks: stats.asks, byType: stats.byType,
     alive: s.players.filter((p) => !p.bankrupt).length,
     winner: (s.over && !s.__capped && s.ranking) ? s.players[s.ranking[0]].name : null,
@@ -325,6 +327,8 @@ async function playGame(seed, policyName, checker, world, rounds, classic = true
     cov,
     owned: Object.keys(s.owners).length,
     houses: Object.values(s.houses).reduce((a, b) => a + b, 0),
+    // 真正抽到的技能卡张数：skillLaps 就是发牌计数（跟 cov 的调用次数不是一回事）
+    skillDrawn: s.players.reduce((a, p) => a + (p.skillLaps || 0), 0),
     _fails: fails
   };
 }
@@ -675,6 +679,170 @@ const group = (name) => { const g = { name, pass: 0, fail: [], notes: [] }; grou
 }
 
 /* ============================================================
+   A2. 技能卡（绕圈发牌 · 当场结算 · 不占手牌）
+   ============================================================ */
+{
+  const g = group('技能卡');
+  const world = createWorld(1);
+  const { DC } = world;
+  const mk = (settings) => {
+    const { eng } = makeEngine(DC, { humanPolicy: POLICIES.normal, settings });
+    eng.newGame(4);
+    return eng;
+  };
+  const ok = (cond, msg) => { if (cond) g.pass++; else g.fail.push(msg); };
+  const grant = (e, p, cells) => cells.forEach((i) => {
+    e.state.owners[i] = p.id;
+    if (p.props.indexOf(i) < 0) p.props.push(i);
+  });
+
+  // 卡组本身：文案齐全，且 kind 都在 applyCard 的认识范围内，
+  // 否则抽到就是一张什么也不做的空牌
+  {
+    const KNOWN = ['gain', 'pay', 'payPerHouse', 'collectAll', 'moveTo', 'nearest',
+      'move', 'jail', 'jailCard', 'lapBonus', 'freeHouse'];
+    const unknown = DC.SKILL.filter((c) => !c.text || KNOWN.indexOf(c.kind) < 0);
+    ok(DC.SKILL.length >= 8, `技能卡组太薄（${DC.SKILL.length} 张）`);
+    ok(unknown.length === 0, `技能卡有引擎不认识的 kind：${unknown.map((c) => c.kind).join('、')}`);
+    // 分红与加盖都依赖卡面参数，缺了就退化成 NaN
+    const broken = DC.SKILL.filter((c) =>
+      (c.kind === 'lapBonus' && (!(c.per > 0) || !(c.cap > 0))) ||
+      (c.kind === 'freeHouse' && !(c.fallback > 0)));
+    ok(broken.length === 0, `技能卡缺关键参数：${broken.map((c) => c.text).join('、')}`);
+  }
+
+  // 绕完一圈 → 发一张，牌堆指针前进
+  {
+    const e = mk();
+    const p0 = e.player(0);
+    const before = e.state.skillIdx;
+    p0.laps = 1;
+    await e.settleSkillCard(p0, e._loopId);
+    ok(e.state.skillIdx > before, '绕完一圈应抽到一张技能卡');
+    ok(p0.skillLaps === 1, `结算后 skillLaps 应记到 1，实为 ${p0.skillLaps}`);
+  }
+
+  // 同一圈不重复发牌（幂等），再绕一圈才发下一张
+  {
+    const e = mk();
+    const p0 = e.player(0);
+    p0.laps = 1;
+    await e.settleSkillCard(p0, e._loopId);
+    const afterFirst = e.state.skillIdx;
+    await e.settleSkillCard(p0, e._loopId);
+    ok(e.state.skillIdx === afterFirst, '同一圈被重复发了两张技能卡');
+    p0.laps = 2;
+    await e.settleSkillCard(p0, e._loopId);
+    ok(e.state.skillIdx === afterFirst + 1, '跨到下一圈应再发一张');
+  }
+
+  // 一圈内连跳多格只结算一次（牌堆有界）
+  {
+    const e = mk();
+    const p0 = e.player(0);
+    p0.laps = 0;
+    await e.settleSkillCard(p0, e._loopId);
+    const idle = e.state.skillIdx;
+    ok(idle === 0, `没绕圈就不该发牌，实发 ${idle} 张`);
+  }
+
+  // 关掉开关：绕圈也不发牌，且把指针跟上圈数（重新打开不会补发）
+  {
+    const e = mk({ skillCards: false });
+    const p0 = e.player(0);
+    p0.laps = 3;
+    await e.settleSkillCard(p0, e._loopId);
+    ok(e.state.skillIdx === 0, '关闭技能卡后仍在发牌');
+    ok(p0.skillLaps === 3, '关闭技能卡时 skillLaps 应跟上圈数');
+    e.settings.skillCards = true;
+    await e.settleSkillCard(p0, e._loopId);
+    ok(e.state.skillIdx === 0, '重新打开技能卡时不应补发历史圈数');
+  }
+
+  // 牌堆抽空后重洗，不会读到 undefined
+  {
+    const e = mk();
+    const p0 = e.player(0);
+    e.state.skillIdx = e.state.skill.length;
+    p0.laps = 1;
+    await e.settleSkillCard(p0, e._loopId);
+    ok(e.state.skill.length === DC.SKILL.length, '重洗后牌堆张数变了');
+    ok(e.state.skillIdx === 1, `重洗后指针应从 1 开始，实为 ${e.state.skillIdx}`);
+  }
+
+  // 路网分红：按圈数计价并有上限
+  {
+    const e = mk();
+    const p0 = e.player(0);
+    const card = { text: '测试分红', kind: 'lapBonus', per: 150, cap: 1500 };
+    p0.cash = 10000; p0.laps = 2;
+    await e.applyCard(p0, card, 0);
+    ok(p0.cash === 10000 + 300, `2 圈应分 300，实得 ${p0.cash - 10000}`);
+    p0.cash = 0; p0.laps = 99;
+    await e.applyCard(p0, card, 0);
+    ok(p0.cash === 1500, `分红应封顶 1,500，实得 ${p0.cash}`);
+  }
+
+  // 免费加盖：集齐整组时不花钱、加一栋房
+  {
+    const e = mk();
+    const p0 = e.player(0);
+    grant(e, p0, DC.GROUP_CELLS.A);
+    const cash = p0.cash;
+    const sum = (s) => Object.values(s.houses).reduce((a, b) => a + b, 0);
+    await e.applyCard(p0, { text: '测试加盖', kind: 'freeHouse', fallback: 500 }, 0);
+    ok(p0.cash === cash, `免费加盖不应扣钱（少了 ${cash - p0.cash}）`);
+    ok(sum(e.state) === 1, `免费加盖应加一栋房屋，实为 ${sum(e.state)}`);
+  }
+
+  // 免费加盖同样受经典建房规则约束：没集齐整组就盖不了 → 折算现金
+  {
+    const e = mk();
+    const p0 = e.player(0);
+    e.state.owners[1] = p0.id; p0.props.push(1);          // 只有 A 组里的一块地
+    const cash = p0.cash;
+    await e.applyCard(p0, { text: '测试加盖', kind: 'freeHouse', fallback: 500 }, 0);
+    ok(Object.values(e.state.houses).reduce((a, b) => a + b, 0) === 0,
+      '未集齐整组时不应绕过经典规则加盖');
+    ok(p0.cash === cash + 500, `盖不了时应折算 500 现金，实得 ${p0.cash - cash}`);
+  }
+
+  // 关掉经典建房规则后，单块地也能免费加盖
+  {
+    const e = mk({ classicRules: false });
+    const p0 = e.player(0);
+    e.state.owners[1] = p0.id; p0.props.push(1);
+    await e.applyCard(p0, { text: '测试加盖', kind: 'freeHouse', fallback: 500 }, 0);
+    ok(Object.values(e.state.houses).reduce((a, b) => a + b, 0) === 1,
+      '宽松规则下单块地应能免费加盖');
+  }
+
+  // 存档要带上技能卡牌堆；缺字段的老档恢复时自动补牌堆与计数器
+  {
+    const e = mk();
+    const p0 = e.player(0);
+    p0.laps = 3; p0.skillLaps = 1;
+    DC.Store.save(e.state);
+    const snap = DC.Store.load();
+    ok(!!snap && Array.isArray(snap.skill) && snap.skill.length === DC.SKILL.length
+      && snap.skillIdx === e.state.skillIdx, '存档未保留技能卡牌堆与指针');
+
+    const e3 = mk();
+    const legacy = JSON.parse(JSON.stringify({
+      v: DC.CONFIG.version, players: e3.state.players, current: 0, round: 1,
+      die: 0, owners: {}, houses: {}, mortgaged: {}, pot: 0, log: [],
+      chance: [], chanceIdx: 0, fate: [], fateIdx: 0, over: false
+    }));
+    delete legacy.players[0].skillLaps;
+    e3.restore(legacy);
+    ok(Array.isArray(e3.state.skill) && e3.state.skill.length === DC.SKILL.length,
+      '缺 skill 字段的老档恢复时未补牌堆');
+    ok(e3.state.players[0].skillLaps === (legacy.players[0].laps || 0),
+      '缺 skillLaps 的老档恢复时未补齐计数器');
+  }
+}
+
+/* ============================================================
    B. 随机对局：逐回合不变量
    ============================================================ */
 {
@@ -684,6 +852,7 @@ const group = (name) => { const g = { name, pass: 0, fail: [], notes: [] }; grou
   const byType = {}, cov = {};
   // 两种建房规则各跑一半：既覆盖两条分支，也能量化对局长度差异
   const byRules = { classic: { n: 0, rounds: 0, houses: 0 }, simple: { n: 0, rounds: 0, houses: 0 } };
+  let skillCards = 0;
 
   for (let i = 0; i < GAMES; i++) {
     const seed = SEED0 + i;
@@ -691,8 +860,9 @@ const group = (name) => { const g = { name, pass: 0, fail: [], notes: [] }; grou
     const classic = i % 2 === 0;
     const world = createWorld(seed);
     const checker = makeChecker(world);
-    const r = await playGame(seed, policy, checker, world, MAX_ROUNDS, classic);
+    const r = await playGame(seed, policy, checker, world, MAX_ROUNDS, classic, SKILLS);
     totalAsks += r.asks; totalRounds += r.round; totalHouses += r.houses; totalOwned += r.owned;
+    skillCards += r.skillDrawn;
     if (r.capped) capped++; else if (r.over) ended++;
     const b = byRules[classic ? 'classic' : 'simple'];
     b.n++; b.rounds += r.round; b.houses += r.houses;
@@ -719,6 +889,10 @@ const group = (name) => { const g = { name, pass: 0, fail: [], notes: [] }; grou
     return `${k === 'classic' ? '经典' : '宽松'} ${x.n} 局：平均 ${(x.rounds / x.n).toFixed(0)} 回合、`
       + `${(x.houses / x.n).toFixed(1)} 栋房屋`;
   }).filter(Boolean).join(' · '));
+  g.notes.push(SKILLS
+    ? `技能卡开启：${GAMES} 局共发出 ${skillCards} 张（平均每局 ${(skillCards / GAMES).toFixed(0)} 张、`
+      + `每 ${(totalRounds / Math.max(skillCards, 1)).toFixed(1)} 回合一张）；加 --skills=0 再跑一遍可对比对局长度`
+    : `技能卡已按 --skills=0 关闭（本次未抽任何牌）`);
   g.notes.push('决策分布 ' + Object.entries(byType).sort((a, b) => b[1] - a[1])
     .map(([k, v]) => `${k}:${v}`).join(' '));
 
@@ -729,6 +903,7 @@ const group = (name) => { const g = { name, pass: 0, fail: [], notes: [] }; grou
     'runAuction', 'drawCard', 'buyHouse', 'sellHouse', 'mortgage',
     'unmortgage', 'declareBankrupt', 'sendToJail', 'buy'
   ];
+  if (SKILLS) expected.push('settleSkillCard');
   const missed = expected.filter((k) => !cov[k]);
   g.notes.push('路径覆盖 ' + expected.filter((k) => cov[k]).map((k) => `${k.replace('land:', '')}:${cov[k]}`).join(' '));
   if (missed.length) g.notes.push('未覆盖（加大 --games 或换 --seed 试试）：' + missed.join(' '));
@@ -749,7 +924,7 @@ const group = (name) => { const g = { name, pass: 0, fail: [], notes: [] }; grou
     const policy = ['normal', 'cautious', 'reckless'][i % 3];
     const run = async () => {
       const w = createWorld(seed);
-      return playGame(seed, policy, makeChecker(w), w, MAX_ROUNDS);
+      return playGame(seed, policy, makeChecker(w), w, MAX_ROUNDS, true, SKILLS);
     };
     const a = await run(), b = await run();
     const same = a.hash === b.hash && a.round === b.round && a.over === b.over && a.owned === b.owned;

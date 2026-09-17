@@ -147,6 +147,25 @@ window.DC = window.DC || {};
     { text: '银行退回手续费 ¥800',                      kind: 'gain', amount: 800 }
   ];
 
+  /* ---------- 技能卡组 ----------
+     不占手牌、也没有出牌时机：每绕完一圈抽一张，效果当场结算。
+     获取途径是「绕圈」这个玩家主动行为，所以整体偏正向，
+     但保留违建拆除 / 审计 / 稽查这类负项，避免变成纯补贴。 */
+  DC.SKILL = [
+    { text: '施工补贴，收取 ¥800',                        kind: 'gain', amount: 800 },
+    { text: '贷款贴息，收取 ¥600',                        kind: 'gain', amount: 600 },
+    { text: '路网分红，按已完成圈数每圈 ¥150（上限 ¥1,500）', kind: 'lapBonus', per: 150, cap: 1500 },
+    { text: '免费加盖，在自有地产上添一栋房屋',              kind: 'freeHouse', fallback: 500 },
+    { text: '紧急调度，前往最近的车站',                     kind: 'nearest', of: 'rail' },
+    { text: '专线通勤，前进三格',                          kind: 'move', steps: 3 },
+    { text: '交通管制，后退两格',                          kind: 'move', steps: -2 },
+    { text: '同业道贺，每位业主付您 ¥150',                  kind: 'collectAll', amount: 150 },
+    { text: '违建拆除，每栋房屋缴纳 ¥200',                  kind: 'payPerHouse', amount: 200 },
+    { text: '年度审计，缴纳 ¥400',                         kind: 'pay', amount: 400 },
+    { text: '稽查传唤，直接入狱',                           kind: 'jail' },
+    { text: '获得「出狱许可证」，可留用一次',                kind: 'jailCard' }
+  ];
+
   /* ---------- 工具 ---------- */
   DC.util = {
     money: function (n) {

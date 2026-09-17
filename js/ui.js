@@ -982,6 +982,7 @@ window.DC = window.DC || {};
         '<h3>经典建房规则</h3><p>默认开启，三条限制只作用于分组的<strong>地产</strong>：必须先<strong>集齐同组全部地产</strong>才能在该组建房；同组内房屋数要均衡（相差不超过 1 栋）；同组内有地块处于抵押状态时不能建房。车站与公用事业没有分组、租金按持有数量计价，不受这三条限制。</p><p>觉得节奏太慢，可以在「设置」里关掉，退回「单块地即可一路升到酒店」的宽松规则。</p>' +
         '<h3>监狱</h3><p>入狱后可缴纳保释金、使用出狱许可证，或掷骰求 6。三回合未掷出 6 将强制保释。</p>' +
         '<h3>卡牌与税收</h3><p>机会与命运会带来收益、罚款、位移或入狱。缴纳的罚款会进入免费停车场的奖池，停在停车场即可全部领取。</p>' +
+        '<h3>技能卡</h3><p>独立于机会与命运的一副牌，<strong>不占手牌、也没有出牌时机</strong>：每完成一圈自动抽一张，效果当场结算。整体偏收益（施工补贴、贷款贴息、按圈数分红、免费加盖一栋房屋），也夹着违建拆除、年度审计、稽查传唤这类负项。</p><p>其中「路网分红」按你已完成的圈数计价，上限 ¥1,500；「免费加盖」同样受经典建房规则的约束，若当时没有可加盖的地产，会折算为 ¥500 现金，不会空手。</p><p>不想要这套牌，可以在「设置 → 技能卡」里关掉，绕圈就不再发牌。</p>' +
         '<h3>破产</h3><p>现金不足时必须变卖资产；仍无法支付则宣告破产，产业转给债主（或由银行收回）。</p>' +
         '</div>';
       this.sheet({ eyebrow: '规则 · RULES', title: '怎么玩', body: html, actions: [{ label: '知道了', kind: 'primary' }] });
@@ -996,6 +997,7 @@ window.DC = window.DC || {};
         '<div class="row"><span>震动反馈</span><button type="button" class="switch" id="swHaptic" role="switch"></button></div>' +
         '<div class="row"><span>减少动画</span><button type="button" class="switch" id="swMotion" role="switch"></button></div>' +
         '<div class="row"><span>经典建房规则</span><button type="button" class="switch" id="swClassic" role="switch"></button></div>' +
+        '<div class="row"><span>技能卡</span><button type="button" class="switch" id="swSkill" role="switch"></button></div>' +
         '<div class="row"><span>动画速度</span><div class="seg" id="segSpeed">' +
           '<button type="button" data-v="0.65">慢</button><button type="button" data-v="1">标准</button><button type="button" data-v="1.7">快</button>' +
         '</div></div>' +
@@ -1007,6 +1009,7 @@ window.DC = window.DC || {};
       var swH = document.getElementById('swHaptic');
       var swR = document.getElementById('swMotion');
       var swC = document.getElementById('swClassic');
+      var swK = document.getElementById('swSkill');
       var sync = function () {
         swS.classList.toggle('is-on', e.settings.sound);
         swS.setAttribute('aria-checked', String(e.settings.sound));
@@ -1018,6 +1021,8 @@ window.DC = window.DC || {};
         swR.setAttribute('aria-checked', String(!!e.settings.reducedMotion));
         swC.classList.toggle('is-on', e.settings.classicRules !== false);
         swC.setAttribute('aria-checked', String(e.settings.classicRules !== false));
+        swK.classList.toggle('is-on', e.settings.skillCards !== false);
+        swK.setAttribute('aria-checked', String(e.settings.skillCards !== false));
       };
       sync();
       swS.addEventListener('click', function () {
@@ -1050,6 +1055,14 @@ window.DC = window.DC || {};
         self.toast(e.settings.classicRules
           ? '已开启经典建房规则：集齐整组才能建房'
           : '已关闭经典建房规则：单块地即可建房', 'info');
+      });
+      swK.addEventListener('click', function () {
+        e.settings.skillCards = e.settings.skillCards === false;
+        if (DC.saveSettings) DC.saveSettings();
+        sync();
+        self.toast(e.settings.skillCards
+          ? '已开启技能卡：每绕完一圈抽一张'
+          : '已关闭技能卡：绕圈不再发牌', 'info');
       });
       var seg = document.getElementById('segSpeed');
       seg.querySelectorAll('button').forEach(function (b) {
@@ -1099,6 +1112,9 @@ window.DC = window.DC || {};
             ? '集齐同组地产后才能建房，再次停在自己的地上即可升级'
             : '再次停在自己的地上，可升级提高租金') + '</li>' +
           '<li>' + icon('i-jail') + '保释金 ' + money(C.jailFine) + '，也可以掷 6 出狱</li>' +
+          (e.settings.skillCards !== false
+            ? '<li>' + icon('i-bolt') + '每绕完一圈抽一张技能卡，效果当场结算</li>'
+            : '') +
         '</ul>';
       var actions = [{ label: '开始新对局', kind: 'primary', icon: 'i-dice', onClick: function () { self.startGame(count); } }];
       if (save) {
@@ -1187,12 +1203,19 @@ window.DC = window.DC || {};
     },
 
     /* ---------------- 卡牌 ---------------- */
+    /* label → 卡面配色与英文副标。机会走金色、命运走紫色、技能卡走青色。 */
+    cardSkin: function (label) {
+      if (label === '机会') return { key: 'chance', en: 'CHANCE' };
+      if (label === '技能') return { key: 'skill', en: 'SKILL' };
+      return { key: 'fate', en: 'FATE' };
+    },
     showCard: function (p, card, label, isAI) {
       var self = this;
-      var node = el('div', 'cardfx cardfx--' + (label === '机会' ? 'chance' : 'fate'));
+      var skin = this.cardSkin(label);
+      var node = el('div', 'cardfx cardfx--' + skin.key);
       node.innerHTML =
         '<div class="cardfx__inner">' +
-          '<div class="cardfx__band"><span>' + esc(label) + ' · ' + (label === '机会' ? 'CHANCE' : 'FATE') + '</span></div>' +
+          '<div class="cardfx__band"><span>' + esc(label) + ' · ' + skin.en + '</span></div>' +
           '<p class="cardfx__text">' + esc(card.text) + '</p>' +
           '<p class="cardfx__who">' + esc(p.name) + '</p>' +
         '</div>';

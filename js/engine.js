@@ -22,7 +22,8 @@ window.DC = window.DC || {};
           v: C.version, players: state.players, current: state.current, round: state.round,
           die: state.die, owners: state.owners, houses: state.houses, mortgaged: state.mortgaged,
           pot: state.pot, log: state.log.slice(-40), chance: state.chance, chanceIdx: state.chanceIdx,
-          fate: state.fate, fateIdx: state.fateIdx, over: state.over
+          fate: state.fate, fateIdx: state.fateIdx,
+          skill: state.skill, skillIdx: state.skillIdx, over: state.over
         }));
         localStorage.setItem(SAVE_KEY, JSON.stringify(snap));
         return true;
@@ -53,6 +54,9 @@ window.DC = window.DC || {};
       // 经典建房规则：集齐同组全部地产才能在该组建房、同组不得有抵押、
       // 同组房屋数要均衡。关掉则退回「单块地也能一路升到酒店」的宽松规则。
       classicRules: true,
+      // 技能卡：独立卡组，每绕完一圈抽一张、效果当场结算（不占手牌、无出牌时机）。
+      // 关掉则完全回到「只有机会 / 命运」的旧规则，绕圈也不再发牌。
+      skillCards: true,
       // 默认不跟随系统「减少动画」，避免游戏动效被系统设置整锅关掉；
       // 仍可在设置里手动打开。
       reducedMotion: false
@@ -108,7 +112,7 @@ window.DC = window.DC || {};
         return {
           id: i, name: p.name, short: p.short, color: p.color, isAI: p.isAI,
           cash: C.startCash, pos: 0, inJail: false, jailTurns: 0, jailCards: 0,
-          bankrupt: false, props: [], laps: 0
+          bankrupt: false, props: [], laps: 0, skillLaps: 0
         };
       });
       this._loopId++;
@@ -119,6 +123,7 @@ window.DC = window.DC || {};
         owners: {}, houses: {}, mortgaged: {}, pot: 0, log: [],
         chance: U.shuffle(DC.CHANCE), chanceIdx: 0,
         fate: U.shuffle(DC.FATE), fateIdx: 0,
+        skill: U.shuffle(DC.SKILL), skillIdx: 0,
         ask: null, over: false, ranking: null, awaitingRoll: false,
         justJailed: false, busy: false, lastDeed: null
       };
@@ -135,7 +140,17 @@ window.DC = window.DC || {};
         ask: null, awaitingRoll: false, justJailed: false, busy: false, ranking: null, lastDeed: null
       }, snap);
       this.state.log = snap.log || [];
-      this.state.players.forEach(function (p) { p.props = p.props || []; });
+      this.state.players.forEach(function (p) {
+        p.props = p.props || [];
+        // 技能卡出现之前的存档没有这个字段：按当前圈数补齐，不补发历史圈数
+        if (typeof p.skillLaps !== 'number') p.skillLaps = p.laps || 0;
+      });
+      // 牌堆缺失（老档）或为空时重洗一副，避免抽卡时读到 undefined
+      if (!Array.isArray(this.state.skill) || !this.state.skill.length) {
+        this.state.skill = U.shuffle(DC.SKILL);
+        this.state.skillIdx = 0;
+      }
+      if (typeof this.state.skillIdx !== 'number') this.state.skillIdx = 0;
       this.log('已恢复上次对局', 'info');
       this.emit('state');
       return this.state;
@@ -159,6 +174,7 @@ window.DC = window.DC || {};
           while (again && !this.state.over && id === this._loopId && guard++ < 12) {
             again = await this.runTurn(p, id);
           }
+          if (!this.state.over && id === this._loopId) await this.settleSkillCard(p, id);
         }
         if (this.state.over || id !== this._loopId) break;
         this.advance();
@@ -862,6 +878,25 @@ window.DC = window.DC || {};
       return { freed: false };
     },
 
+    /* ---------- 绕圈技能卡 ----------
+       每完成一圈发一张，效果当场结算（与应用在 applyCard 里的机会/命运同款）。
+       刻意放在回合末尾、而不是塞进 moveBy：moveBy 会被卡牌的位移再次调用，
+       挂在那里会让「机会卡前进 → 过起点 → 再抽技能卡 → 又位移」互相套娃。
+       一回合内最多结算 3 张，防止连锁位移把回合拖死。            */
+    async settleSkillCard(p, id) {
+      if (!p || p.bankrupt || this.state.over) return;
+      if (this.settings.skillCards === false) {
+        p.skillLaps = p.laps || 0;      // 关着的时候跟着圈数走，重新打开不会补发
+        return;
+      }
+      var guard = 0;
+      while ((p.skillLaps || 0) < (p.laps || 0) && guard++ < 3) {
+        p.skillLaps = (p.skillLaps || 0) + 1;
+        await this.drawCard(p, 'skill', '技能', 0);
+        if (id !== this._loopId || this.state.over || p.bankrupt) return;
+      }
+    },
+
     /* ---------- 卡牌 ---------- */
     async drawCard(p, deckKey, label, depth) {
       if (this.state[deckKey + 'Idx'] >= this.state[deckKey].length) {
@@ -870,14 +905,14 @@ window.DC = window.DC || {};
       }
       var card = this.state[deckKey][this.state[deckKey + 'Idx']];
       this.state[deckKey + 'Idx']++;
-      this.log(p.name + ' 抽到' + label + '卡：' + card.text, 'card');
+      this.log(p.name + ' 抽到' + label + '卡：' + card.text, label === '技能' ? 'skill' : 'card');
       this.sfx('card');
       if (this.ui.showCard) await this.ui.showCard(p, card, label, p.isAI);
       await this.applyCard(p, card, depth || 0);
     },
 
     async applyCard(p, card, depth) {
-      var i, amt;
+      var i, amt, self = this;
       switch (card.kind) {
         case 'gain':
           p.cash += card.amount;
@@ -928,6 +963,53 @@ window.DC = window.DC || {};
           this.log(p.name + ' 获得一张出狱许可证', 'card');
           this.emit('state');
           break;
+        /* 技能卡：按已完成圈数分红，带封顶，避免后期滚雪球 */
+        case 'lapBonus': {
+          var laps = Math.max(p.laps || 0, 1);
+          amt = Math.min(laps * card.per, card.cap);
+          p.cash += amt;
+          this.log(p.name + ' 已完成 ' + (p.laps || 0) + ' 圈，路网分红 ' + money(amt), 'money');
+          this.sfx('coin');
+          if (this.ui.float) this.ui.float('+' + money(amt), p.pos, 'gain');
+          if (this.ui.coinFly) this.ui.coinFly(p.pos, p.id);
+          this.emit('state');
+          break;
+        }
+        /* 技能卡：免费加盖。走 canUpgradeLevel 而不是直接 houses++，
+           所以经典建房规则（集齐整组 / 均级建造 / 同组无抵押）照样管得住它；
+           到处都盖不了时折算成现金，保证抽到不是空牌。 */
+        case 'freeHouse': {
+          var picks = p.props.filter(function (i) { return self.canUpgradeLevel(p, i); });
+          if (!picks.length) {
+            amt = card.fallback || 500;
+            p.cash += amt;
+            this.log(p.name + ' 暂无可加盖的地产，技能卡折算为 ' + money(amt), 'skill');
+            this.sfx('coin');
+            if (this.ui.float) this.ui.float('+' + money(amt), p.pos, 'gain');
+            this.emit('state');
+            break;
+          }
+          picks.sort(function (a, b) {
+            var ca = CELLS[a], cb = CELLS[b];
+            var ta = ca.type === 'prop' ? 0 : 1, tb = cb.type === 'prop' ? 0 : 1;
+            if (ta !== tb) return ta - tb;                                   // 优先给成组地产加盖
+            var ha = self.state.houses[a] || 0, hb = self.state.houses[b] || 0;
+            if (ha !== hb) return ha - hb;                                   // 均级建造：先补最少的那块
+            return cb.price - ca.price;
+          });
+          var at = picks[0], cellAt = CELLS[at];
+          this.state.houses[at] = (this.state.houses[at] || 0) + 1;
+          var lv = this.state.houses[at];
+          var what = cellAt.type === 'prop'
+            ? (lv >= C.maxHouses ? '酒店' : '第 ' + lv + ' 栋房屋')
+            : ('Lv.' + lv);
+          this.log(p.name + ' 免费加盖 ' + cellAt.name + ' → ' + what, 'skill');
+          this.sfx(lv >= C.maxHouses ? 'hotel' : 'build');
+          this.buzz([20, 40, 20]);
+          if (this.ui.float) this.ui.float('免费加盖', at, 'gain');
+          this.emit('state');
+          break;
+        }
         default:
           break;
       }

@@ -20,7 +20,8 @@
     try {
       localStorage.setItem(SETTINGS_KEY, JSON.stringify({
         sound: s.sound, music: s.music, haptics: s.haptics, speed: s.speed,
-        reducedMotion: s.reducedMotion, classicRules: s.classicRules !== false
+        reducedMotion: s.reducedMotion, classicRules: s.classicRules !== false,
+        skillCards: s.skillCards !== false
       }));
     } catch (e) {}
   }
