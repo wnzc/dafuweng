@@ -9,7 +9,6 @@
   "id": "./",
   "display": "standalone",
   "display_override": ["standalone", "minimal-ui"],
-  "orientation": "portrait",
   "theme_color": "#2E6FBE",
   "background_color": "#7FC4F0",
   "categories": ["games", "entertainment"],

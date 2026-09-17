@@ -1,10 +1,14 @@
 /* ============================================================
-   生成分享卡 assets/og-cover.png（1200×630）
+   生成分享卡 assets/og-cover.jpg（1200×630）
    ------------------------------------------------------------
    做两件事：
      1) 用 headless Chrome 打开真实游戏，铺一个好看的盘面，截取
         「HUD + 玩家条 + 棋盘」那块（2 倍像素）；
      2) 把截图嵌进 tools/og-card.html，整页截成 1200×630。
+
+   为什么出 JPEG 而不是 PNG：卡片是渐变 + 文字，PNG 无损要 568 KB，
+   JPEG q86 只有约 100 KB 且肉眼无差；爬虫抓卡片时更省时。
+   卡片本身不透明，用不到 PNG 的 alpha 通道。
 
    中间产物全部落在系统临时目录，仓库里只留最终那张图。
 
@@ -18,7 +22,8 @@ import { spawn } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const OUT = path.join(ROOT, 'assets', 'og-cover.png');
+const OUT = path.join(ROOT, 'assets', 'og-cover.jpg');
+const QUALITY = 86;
 const PORT = +(process.env.CDP_PORT || 9339);
 
 const CHROME = process.env.CHROME || [
@@ -36,6 +41,27 @@ if (!CHROME) {
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const log = (...a) => console.log('·', ...a);
+
+/* 读 PNG / JPEG 的真实像素尺寸，用来验证截出来的图确实是 1200×630 */
+function imageSize(buf) {
+  if (buf.length > 24 && buf.readUInt32BE(0) === 0x89504e47) {
+    return { type: 'png', w: buf.readUInt32BE(16), h: buf.readUInt32BE(20) };
+  }
+  if (buf[0] === 0xff && buf[1] === 0xd8) {            // JPEG：顺序扫段找 SOFn
+    let i = 2;
+    while (i < buf.length - 9) {
+      if (buf[i] !== 0xff) { i++; continue; }
+      const marker = buf[i + 1];
+      const len = buf.readUInt16BE(i + 2);
+      // SOF0–SOF15 里除了 DHT(0xC4) / JPG(0xC8) / DAC(0xCC) 都带尺寸
+      if (marker >= 0xc0 && marker <= 0xcf && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc) {
+        return { type: 'jpeg', h: buf.readUInt16BE(i + 5), w: buf.readUInt16BE(i + 7) };
+      }
+      i += 2 + len;
+    }
+  }
+  return { type: 'unknown', w: 0, h: 0 };
+}
 
 /* ---------------- 最小 CDP 客户端 ---------------- */
 function connect(url) {
@@ -88,6 +114,7 @@ const chrome = spawn(CHROME, [
   '--force-device-scale-factor=1',
   `--remote-debugging-port=${PORT}`,
   `--user-data-dir=${profile}`,
+  ...(process.env.CI ? ['--no-sandbox'] : []),      // GitHub Actions 的 runner 上必须关沙箱
   'about:blank'
 ], { stdio: 'ignore' });
 
@@ -167,13 +194,44 @@ try {
   await goto(pathToFileURL(path.join(tmp, 'og-card.html')).href);
   await sleep(700);
 
-  const card = await cdp.send('Page.captureScreenshot', { format: 'png' });
+  /* 版式自检：真机画面（含旋转与投影后的外接矩形）必须完整落在画布里。
+     之前靠肉眼看缩略图判断，溢出过一次；改成量出来。 */
+  const geo = await evaluate(`(() => {
+    const rect = (s) => {
+      const n = document.querySelector(s);
+      if (!n) return null;
+      const b = n.getBoundingClientRect();
+      return { l: Math.round(b.left), t: Math.round(b.top), r: Math.round(b.right), b: Math.round(b.bottom) };
+    };
+    return { left: rect('.left'), right: rect('.right'), phone: rect('.phone'), die: rect('.die'), url: rect('.url') };
+  })()`);
+  const shown = [geo.phone, geo.die].filter(Boolean);
+  const bounds = {
+    l: Math.min(...shown.map((x) => x.l)), t: Math.min(...shown.map((x) => x.t)),
+    r: Math.max(...shown.map((x) => x.r)), b: Math.max(...shown.map((x) => x.b))
+  };
+  log(`真机画面外接矩形 x ${bounds.l}–${bounds.r}  y ${bounds.t}–${bounds.b}（画布 1200×630）`);
+  const overflow = [];
+  if (bounds.r > 1200 - 18) overflow.push(`右边超出 ${bounds.r - (1200 - 18)}px`);
+  if (bounds.l < 18) overflow.push(`左边超出 ${18 - bounds.l}px`);
+  if (bounds.b > 630 - 18) overflow.push(`下边超出 ${bounds.b - (630 - 18)}px`);
+  if (bounds.t < 18) overflow.push(`上边超出 ${18 - bounds.t}px`);
+  if (geo.left && geo.right && geo.left.r > geo.right.l + 1) overflow.push('左右两栏重叠');
+  if (overflow.length) {
+    console.error('✗ 版式溢出：' + overflow.join('，') + '（改 tools/og-card.html 的尺寸再重跑）');
+    process.exitCode = 1;
+  } else {
+    log('版式自检通过：画面完整落在画布内，未压到金框');
+  }
+
+  const card = await cdp.send('Page.captureScreenshot', { format: 'jpeg', quality: QUALITY });
   fs.mkdirSync(path.dirname(OUT), { recursive: true });
   fs.writeFileSync(OUT, Buffer.from(card.data, 'base64'));
 
   const buf = fs.readFileSync(OUT);
-  const w = buf.readUInt32BE(16), h = buf.readUInt32BE(20);
-  log(`已写出 ${path.relative(ROOT, OUT)}  ${w}×${h}  ${(buf.length / 1024).toFixed(1)} KB`);
+  const size = imageSize(buf);
+  log(`已写出 ${path.relative(ROOT, OUT)}  ${size.w}×${size.h}  ${(buf.length / 1024).toFixed(1)} KB`);
+  if (size.w !== 1200 || size.h !== 630) process.exitCode = 1;
 } finally {
   cdp?.close();
   chrome.kill('SIGKILL');

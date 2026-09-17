@@ -7,6 +7,14 @@
 
 在手机上打开后可以「添加到主屏幕」，之后全屏运行、断网也能玩。
 
+| 手机竖屏 390×844 | 横屏矮屏 844×390 |
+|---|---|
+| <img src="screenshots/mobile-390x844.png" width="250" alt="手机竖屏：顶栏、玩家条、棋盘、战报、操作坞"> | <img src="screenshots/landscape-844x390.png" width="400" alt="横屏矮屏：棋盘在左，信息与操作在右"> |
+
+| 地契弹层（手机） | 桌面端（弹层居中） |
+|---|---|
+| <img src="screenshots/mobile-deed.png" width="250" alt="地契弹层：售价、租金阶梯、抵押说明与买下/拍卖按钮"> | <img src="screenshots/desktop-1280x900.png" width="400" alt="桌面端：容器居中，弹层为居中对话框"> |
+
 ## 运行
 
 ```bash
@@ -38,7 +46,7 @@ python3 -m http.server 8765
 | AI | 买地看现金与满组价值、会建房、会赎回、会参与竞拍 |
 | 存档 | 每个回合开始时自动存档，下次可「继续上次对局」 |
 | 可安装 | 有 manifest 与各尺寸图标，可「添加到主屏幕」全屏运行 |
-| 离线 | Service Worker 预缓存全部文件（<300 KB），断网照常开新局 |
+| 离线 | Service Worker 预缓存全站（代码 + 样式 + HTML 约 172 KB，图标约 301 KB，合计约 472 KB），断网照常开新局 |
 | 分享卡片 | 1200×630 的 OG 图，分享到微信 / 微博 / Twitter 会出大图 |
 | 音效 | WebAudio 现场合成（骰子 / 收钱 / 付钱 / 盖章 / 铁门 / 建房 / 胜利），可静音 |
 | 反馈 | 震动、浮动金额、盖章特效、战报流水 |
@@ -55,7 +63,7 @@ python3 -m http.server 8765
 
 ```
 index.html        结构、SVG 图标 sprite、分享卡片与 PWA 元信息
-manifest.webmanifest  PWA 清单（standalone / portrait / 三种图标）
+manifest.webmanifest  PWA 清单（standalone、三种图标；不锁方向，横屏布局照常可用）
 sw.js             Service Worker：预缓存全站，断网可用
 styles.css        设计系统（令牌 → 组件 → 响应式 → 无障碍）
 js/data.js        24 格棋盘、卡组、分组、7×7 环坐标
@@ -63,7 +71,7 @@ js/audio.js       WebAudio 合成音效
 js/engine.js      规则引擎：异步回合循环 + 全部规则 + AI + 存档
 js/ui.js          渲染、骰子动画、弹层（地契 / 拍卖 / 筹款 / 资产 / 战报 / 结算）
 js/main.js        启动、偏好设置、Service Worker 注册
-assets/           应用图标（180 / 192 / 512）与分享卡片 og-cover.png
+assets/           应用图标（180 / 192 / 512）与分享卡片 og-cover.jpg
 docs/…            设计规格
 tools/            开发期脚本（可选，不影响游戏运行）
 tools/make-cert.sh  可选：生成本地调试用自签 HTTPS 证书（默认不需要，证书不入库）
@@ -71,6 +79,23 @@ tools/make-cert.sh  可选：生成本地调试用自签 HTTPS 证书（默认�
 
 > `index.html` 里的 `og:image` 与 `canonical` 写的是 Pages 绝对地址。
 > 如果换仓库名或换域名，记得同步改这两处，否则分享出去的卡片没有图。
+> `node tools/check-pwa.mjs --live` 会盯住这件事：三处地址必须同源，且线上真能取到。
+
+## 发布
+
+push 到 `main` 会先跑测试、再把站点发到 GitHub Pages。**发布目录是白名单**，见
+`.github/workflows/static.yml`：
+
+```
+index.html  styles.css  sw.js  manifest.webmanifest  js/  assets/
+```
+
+只上传这几项，而不是整仓上传。原因是之前用 `path: '.'` 把整个仓库都发布到公网，
+连 `.cert/key.pem` 这种本地调试私钥都能被 `curl` 下来——只要某个文件忘了写进
+`.gitignore`，它就会自动出现在线上。改成白名单后，默认行为变成「不上线」。
+
+> **代价**：新增**顶层**的运行时文件（比如 `fonts/`、`data.json`）时，必须同时把它加进
+> workflow 里那条 `cp -R`，否则线上会 404。`js/` 与 `assets/` 内部新增文件不用管。
 
 ## 设计说明
 
@@ -113,20 +138,25 @@ node tools/check-pwa.mjs --live      # 换成校验线上 Pages（子路径 /daf
 node tools/check-pwa.mjs --verbose   # 顺便打印缓存的条目
 ```
 
-会起一个临时本地服务并逐项断言：manifest 能否解析、图标尺寸与声明是否一致、
-`og:image` 指向的文件是否真实存在且为 1200×630、Service Worker 有没有激活、
+会起一个临时本地服务并逐项断言（42 项）：manifest 能否解析、图标尺寸与声明是否一致、
+`og:image` 指向的文件是否真实存在且为 1200×630、`og:image:type` 与真实格式是否对得上、
+`canonical` / `og:url` / `og:image` 三处绝对地址是否同源、Service Worker 有没有激活、
 `sw.js` 里声明的每个文件是否真的进了缓存，**以及断网重载后能不能真的开出一局**。
+
+push 到 `main` 时 CI 也会跑它（在 ubuntu runner 上真开 Chrome），跑不过就不发布。
 
 ### 重新生成分享卡与图标
 
 分享卡里的手机画面是脚本实时打开游戏截的，不是手画的；图标同理：
 
 ```bash
-node tools/make-og.mjs               # → assets/og-cover.png（1200×630）
+node tools/make-og.mjs               # → assets/og-cover.jpg（1200×630，约 137 KB）
 node tools/make-icons.mjs            # → assets/icon-192/512、maskable、apple-touch-icon
 ```
 
 改版式就改 `tools/og-card.html` / `tools/icon.html` 再重跑，中间产物都落在系统临时目录里，不会进仓库。
+`make-og.mjs` 会顺手量一遍版式：真机画面（含旋转后的外接矩形）必须完整落在画布内、且不压到金框，
+溢出了会直接报错退出——以前靠肉眼看缩略图判断，错判过一次。
 
 ### 手机上跑真机
 

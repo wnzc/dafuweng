@@ -87,6 +87,7 @@ const chrome = spawn(CHROME, [
   '--force-device-scale-factor=1',
   `--remote-debugging-port=${PORT}`,
   `--user-data-dir=${profile}`,
+  ...(process.env.CI ? ['--no-sandbox'] : []),      // GitHub Actions 的 runner 上必须关沙箱
   'about:blank'
 ], { stdio: 'ignore' });
 

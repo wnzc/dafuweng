@@ -9,7 +9,9 @@
         localhost 正好算安全上下文，file:// 则不支持 SW）
      2) 让 headless Chrome 打开首页，逐项断言
      3) 把网络断掉再刷新一次，确认离线仍可玩
-     4) 顺手校验 index.html 里的 og:image 链接指向的本地文件真的存在
+     4) 校验分享卡元信息：og:image 指向的本地文件真实存在、尺寸与
+        og:image:type 都对得上，canonical / og:url / og:image 三处
+        绝对地址同源且（--live 下）真的能取到
 
    跑法：
      node tools/check-pwa.mjs           对着本地临时服务跑
@@ -39,6 +41,29 @@ const CHROME = process.env.CHROME || [
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+/* 读 PNG / JPEG 的真实像素尺寸。分享卡是 JPEG、图标是 PNG，两种都要认，
+   否则换了格式这类检查会静默失效。 */
+function imageSize(buf) {
+  if (buf.length > 24 && buf.readUInt32BE(0) === 0x89504e47) {
+    return { type: 'png', w: buf.readUInt32BE(16), h: buf.readUInt32BE(20) };
+  }
+  if (buf[0] === 0xff && buf[1] === 0xd8) {            // JPEG：顺序扫段找 SOFn
+    let i = 2;
+    while (i < buf.length - 9) {
+      if (buf[i] !== 0xff) { i++; continue; }
+      const marker = buf[i + 1];
+      const len = buf.readUInt16BE(i + 2);
+      // SOF0–SOF15 里除了 DHT(0xC4) / JPG(0xC8) / DAC(0xCC) 都带尺寸
+      if (marker >= 0xc0 && marker <= 0xcf && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc) {
+        return { type: 'jpeg', h: buf.readUInt16BE(i + 5), w: buf.readUInt16BE(i + 7) };
+      }
+      i += 2 + len;
+    }
+  }
+  return { type: 'unknown', w: 0, h: 0 };
+}
+const MIME_OF = { png: 'image/png', jpeg: 'image/jpeg' };
+
 /* ---------------- 断言收集 ---------------- */
 const results = [];
 const ok = (name, detail) => results.push({ pass: true, name, detail });
@@ -57,6 +82,8 @@ const MIME = {
   '.json': 'application/json; charset=utf-8',
   '.webmanifest': 'application/manifest+json; charset=utf-8',
   '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
   '.svg': 'image/svg+xml'
 };
 
@@ -127,6 +154,7 @@ const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'pwa-chrome-'));
 const chrome = spawn(CHROME, [
   '--headless=new', '--disable-gpu', '--hide-scrollbars',
   '--no-first-run', '--no-default-browser-check',
+  ...(process.env.CI ? ['--no-sandbox'] : []),      // GitHub Actions 的 runner 上必须关沙箱
   `--remote-debugging-port=${CDP_PORT}`, `--user-data-dir=${profile}`,
   'about:blank'
 ], { stdio: 'ignore' });
@@ -171,7 +199,11 @@ try {
     if (mf) {
       check(!!mf.name && !!mf.short_name, 'manifest 有 name / short_name', `${mf.name} / ${mf.short_name}`);
       check(mf.display === 'standalone', 'display 为 standalone', String(mf.display));
-      check(mf.orientation === 'portrait', 'orientation 为 portrait', String(mf.orientation));
+      // 不锁方向：CSS 里有专门的横屏矮屏布局（landscape and max-height: 560px），
+      // 一旦把 manifest 的 orientation 写成 portrait，装成应用后那个布局就永远用不到了
+      check(mf.orientation === undefined || mf.orientation === 'portrait',
+        'orientation 没有把横屏布局锁死',
+        mf.orientation === undefined ? '未设置，跟随系统旋转' : String(mf.orientation));
       check(!!mf.theme_color && !!mf.background_color, 'theme_color / background_color 已设置',
         `${mf.theme_color} / ${mf.background_color}`);
       const startUrl = await evaluate(
@@ -188,9 +220,10 @@ try {
         if (status2 !== 200) { bad(`图标可访问 ${ic.src}`, `HTTP ${status2}`); continue; }
         const buf = Buffer.from(await evaluate(
           `fetch(${JSON.stringify(u)}).then(r => r.arrayBuffer()).then(b => Array.from(new Uint8Array(b)))`));
-        const w = buf.readUInt32BE(16), h = buf.readUInt32BE(20);
+        const size = imageSize(buf);
         const want = +String(ic.sizes).split('x')[0];
-        check(w === want && h === want, `图标尺寸正确 ${ic.src}`, `实际 ${w}×${h}，声明 ${ic.sizes}`);
+        check(size.w === want && size.h === want, `图标尺寸正确 ${ic.src}`,
+          `实际 ${size.w}×${size.h}（${size.type}），声明 ${ic.sizes}`);
       }
     }
   }
@@ -207,19 +240,42 @@ try {
   const meta = await evaluate(`(() => {
     const g = (sel, attr) => { const n = document.querySelector(sel); return n ? n.getAttribute(attr) : null; };
     return {
+      ogType: g('meta[property="og:type"]', 'content'),
       ogTitle: g('meta[property="og:title"]', 'content'),
       ogDesc: g('meta[property="og:description"]', 'content'),
+      ogUrl: g('meta[property="og:url"]', 'content'),
       ogImage: g('meta[property="og:image"]', 'content'),
+      ogImageType: g('meta[property="og:image:type"]', 'content'),
+      ogAlt: g('meta[property="og:image:alt"]', 'content'),
       ogW: g('meta[property="og:image:width"]', 'content'),
       ogH: g('meta[property="og:image:height"]', 'content'),
       tw: g('meta[name="twitter:card"]', 'content'),
       canonical: g('link[rel="canonical"]', 'href')
     };
   })()`);
+  const originOf = (u) => { try { return new URL(u).origin; } catch (e) { return null; } };
+  check(meta.ogType === 'website', 'og:type 为 website', String(meta.ogType));
   check(!!meta.ogTitle && !!meta.ogDesc, 'og:title / og:description 已填');
   check(meta.tw === 'summary_large_image', 'twitter:card 为大图模式', String(meta.tw));
-  check(meta.ogW === '1200' && meta.ogH === '630', 'og:image 声明为 1200×630',
-    `${meta.ogW}×${meta.ogH}`);
+  check(meta.ogW === '1200' && meta.ogH === '630', 'og:image 声明为 1200×630', `${meta.ogW}×${meta.ogH}`);
+  check(!!meta.ogAlt, 'og:image:alt 已填（无障碍与抓取兜底）', meta.ogAlt || '缺失');
+
+  // canonical / og:url / og:image 三处都是写死的绝对地址，换仓库名或域名时
+  // 最容易漏改，而且漏了不会报任何错 —— 只是分享出去没图、搜索引擎认错地址。
+  check(/^https:\/\//.test(meta.canonical || ''), 'canonical 是绝对地址', String(meta.canonical));
+  check(!!meta.ogUrl && meta.ogUrl === meta.canonical, 'og:url 与 canonical 一致',
+    `og:url=${meta.ogUrl}  canonical=${meta.canonical}`);
+  check(!!originOf(meta.ogImage) && originOf(meta.ogImage) === originOf(meta.canonical),
+    'og:image 与 canonical 同源',
+    originOf(meta.ogImage) === originOf(meta.canonical)
+      ? String(originOf(meta.canonical))
+      : `og:image 在 ${originOf(meta.ogImage)}，canonical 在 ${originOf(meta.canonical)}`);
+  if (LIVE) {
+    for (const [label, u] of [['canonical', meta.canonical], ['og:url', meta.ogUrl]]) {
+      const s = await evaluate(`fetch(${JSON.stringify(u)}, { cache: 'no-store' }).then(r => r.status).catch(() => 0)`);
+      check(s === 200, `线上 ${label} 可访问`, `HTTP ${s}  ${u}`);
+    }
+  }
 
   if (meta.ogImage) {
     // 线上地址必须是绝对 URL，且指向真实存在的本地文件
@@ -229,9 +285,12 @@ try {
       const local = path.join(ROOT, rel);
       if (check(fs.existsSync(local), `og:image 对应的文件存在（${rel}）`)) {
         const buf = fs.readFileSync(local);
-        check(buf.length > 0 && buf.readUInt32BE(16) === 1200 && buf.readUInt32BE(20) === 630,
-          'og:image 尺寸确实为 1200×630', `${buf.readUInt32BE(16)}×${buf.readUInt32BE(20)}`);
-        check(buf.length < 2.5 * 1024 * 1024, 'og:image 体积在 2.5 MB 以内',
+        const size = imageSize(buf);
+        check(size.w === 1200 && size.h === 630, 'og:image 尺寸确实为 1200×630',
+          `${size.w}×${size.h}（${size.type}）`);
+        check(meta.ogImageType === MIME_OF[size.type], 'og:image:type 与实际文件格式一致',
+          `声明 ${meta.ogImageType}，实际 ${MIME_OF[size.type] || size.type}`);
+        check(buf.length < 500 * 1024, 'og:image 体积在 500 KB 以内（爬虫抓图更快）',
           `${(buf.length / 1024).toFixed(0)} KB`);
       }
     }

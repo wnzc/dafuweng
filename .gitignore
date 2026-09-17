@@ -11,5 +11,8 @@ tools/bin/
 tools/.mcache
 .DS_Store
 
+# CI 组装出来的发布目录（见 .github/workflows/static.yml），本地跑同样步骤时不要入库
+_site/
+
 # 本地工作区数据（AI 会话记忆等），不入库
 .workbuddy/
