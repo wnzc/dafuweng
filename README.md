@@ -109,11 +109,13 @@ node tools/smoke.mjs --verbose       # 打印每局收尾状态
 
 ```bash
 node tools/check-pwa.mjs             # 真开一个浏览器跑，约 10 秒
+node tools/check-pwa.mjs --live      # 换成校验线上 Pages（子路径 /dafuweng/ 只有这样才能验到）
+node tools/check-pwa.mjs --verbose   # 顺便打印缓存的条目
 ```
 
 会起一个临时本地服务并逐项断言：manifest 能否解析、图标尺寸与声明是否一致、
 `og:image` 指向的文件是否真实存在且为 1200×630、Service Worker 有没有激活、
-**以及断网重载后能不能真的开出一局**。
+`sw.js` 里声明的每个文件是否真的进了缓存，**以及断网重载后能不能真的开出一局**。
 
 ### 重新生成分享卡与图标
 

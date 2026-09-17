@@ -11,7 +11,9 @@
      3) 把网络断掉再刷新一次，确认离线仍可玩
      4) 顺手校验 index.html 里的 og:image 链接指向的本地文件真的存在
 
-   跑法：node tools/check-pwa.mjs
+   跑法：
+     node tools/check-pwa.mjs           对着本地临时服务跑
+     node tools/check-pwa.mjs --live    对着线上 Pages 跑（子路径 /dafuweng/ 只有这样才能验到）
    前提：本机装了 Google Chrome（路径可用 CHROME 环境变量覆盖）
    ============================================================ */
 import fs from 'node:fs';
@@ -25,6 +27,7 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const PORT = +(process.env.PORT || 8791);
 const CDP_PORT = +(process.env.CDP_PORT || 9343);
 const PAGES_ORIGIN = 'https://wnzc.github.io/dafuweng/';
+const LIVE = process.argv.includes('--live');
 
 const CHROME = process.env.CHROME || [
   '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
@@ -73,8 +76,9 @@ const server = http.createServer((req, res) => {
   });
   res.end(body);
 });
-await new Promise((r) => server.listen(PORT, '127.0.0.1', r));
-const BASE = `http://127.0.0.1:${PORT}/`;
+if (!LIVE) await new Promise((r) => server.listen(PORT, '127.0.0.1', r));
+const BASE = LIVE ? PAGES_ORIGIN : `http://127.0.0.1:${PORT}/`;
+console.log(LIVE ? `· 校验线上站点 ${PAGES_ORIGIN}` : `· 校验本地服务 ${BASE}`);
 
 /* ---------------- CDP ---------------- */
 function connect(url) {
@@ -232,7 +236,7 @@ try {
       }
     }
     const status3 = await evaluate(`fetch(${JSON.stringify(BASE + rel)}).then(r => r.status).catch(() => 0)`);
-    check(status3 === 200, 'og:image 可被本地服务取到', `HTTP ${status3}`);
+    check(status3 === 200, `${LIVE ? '线上' : '本地服务'}能取到 og:image`, `HTTP ${status3}  ${BASE + rel}`);
   }
 
   /* ── 5. Service Worker 注册与预缓存 ── */
@@ -252,11 +256,20 @@ try {
   })()`);
   check(cacheInfo.total >= 12, '预缓存条目齐全', `${cacheInfo.total} 个文件，缓存名 ${cacheInfo.names.join(',')}`);
 
-  // 注意 sw.js 本身不进预缓存列表：Service Worker 脚本由浏览器自己按字节比对更新，
-  // 手工塞进 Cache Storage 反而会拿到旧版本。
-  const need = ['/index.html', '/styles.css', '/js/data.js', '/js/engine.js', '/js/ui.js', '/js/main.js', '/manifest.webmanifest'];
-  const missing = need.filter((f) => !cacheInfo.urls.some((u) => u.endsWith(f)));
-  check(missing.length === 0, '关键文件都已进缓存', missing.length ? '缺：' + missing.join(' ') : need.join(' '));
+  // 直接以 sw.js 里的 PRECACHE 列表为准逐条核对，避免手写的清单和实现漂移
+  const swSrc = fs.readFileSync(path.join(ROOT, 'sw.js'), 'utf8');
+  const precache = (swSrc.match(/const PRECACHE = \[([\s\S]*?)\];/) || [, ''])
+    .slice(1)[0]
+    .split('\n')
+    .map((l) => (l.match(/'\.\/[^']*'/) || l.match(/"\.\/[^"]*"/) || [])[0])
+    .filter(Boolean)
+    .map((s) => s.slice(1, -1).replace(/^\.\//, '/'));   // './x' → '/x'
+  const uncached = precache.filter((f) =>
+    !cacheInfo.urls.some((u) => u === f || u.endsWith(f)));
+  check(precache.length >= 12 && uncached.length === 0,
+    `sw.js 里声明的 ${precache.length} 个文件都已进缓存`,
+    uncached.length ? '缺：' + uncached.join(' ') : `实存 ${cacheInfo.total} 条`);
+  if (process.argv.includes('--verbose')) console.log('  缓存内容：' + cacheInfo.urls.join(' '));
 
   /* ── 6. 断网后仍能打开 ── */
   await cdp.send('Network.emulateNetworkConditions',
@@ -311,7 +324,7 @@ try {
 } finally {
   cdp?.close();
   chrome.kill('SIGKILL');
-  server.close();
+  try { server.close(); } catch (e) { /* 没监听时忽略 */ }
   await sleep(300);
   try { fs.rmSync(profile, { recursive: true, force: true }); } catch (e) { /* 临时目录 */ }
 }
