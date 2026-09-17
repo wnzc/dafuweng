@@ -116,8 +116,8 @@ try {
       if (ready === 'complete') break;
     }
     // hash 只在同文档内生效，导航到同 URL 换 hash 不会重新触发 script；
-    // 这里显式同步一次变体，保证一定是目标形态
-    await evaluate(`document.body.dataset.variant = ${JSON.stringify(t.variant)}`);
+    // 这里显式同步一次变体，并让环上的格子按新半径重排，保证一定是目标形态
+    await evaluate(`document.body.dataset.variant = ${JSON.stringify(t.variant)}; layoutCells();`);
     await sleep(220);
 
     const shot = await cdp.send('Page.captureScreenshot', { format: 'png' });
