@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>大富翁 · 应用图标</title>
+<!--
+  应用图标版式。由 tools/make-icons.mjs 渲染成 assets/ 下的各个尺寸。
+  尺寸全部用 vmin 表达 —— 渲染时视口就等于图标边长，所以 1vmin 正好是图标的 1%，
+  同一份 markup 可以渲染成 180 / 192 / 512 而不失真。
+
+  三种变体（URL 的 hash 切换）：
+    #any       带圆角的完整图标 —— 浏览器标签、普通 PWA 图标
+    #maskable  满幅背景、图形收进安全区（无骰子）—— Android 自适应图标
+    #apple     满幅方图、图形略大 —— iOS 主屏图标（系统自己切圆角）
+  改完版式后重跑：node tools/make-icons.mjs
+-->
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; overflow: hidden; }
+
+  #icon {
+    position: relative;
+    width: 100%; height: 100%;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 22.5%;
+    overflow: hidden;
+    background:
+      radial-gradient(120% 120% at 50% 20%, #9FD6F7 0%, #6FB6EC 36%, #3D8FD8 68%, #1B4E96 100%);
+  }
+  /* 中心放射光，和棋盘中央的圆盘同源 */
+  #icon::after {
+    content: ""; position: absolute; inset: -30%;
+    background: repeating-conic-gradient(from 0deg,
+      rgba(255,255,255,.22) 0deg 6deg, rgba(255,255,255,0) 6deg 18deg);
+    -webkit-mask-image: radial-gradient(closest-side, #000 6%, rgba(0,0,0,.5) 40%, transparent 72%);
+            mask-image: radial-gradient(closest-side, #000 6%, rgba(0,0,0,.5) 40%, transparent 72%);
+  }
+
+  /* 奶油色棋盘 + 金色边框 */
+  .board {
+    position: relative; z-index: 1;
+    width: 64vmin; height: 64vmin;
+    border-radius: 15vmin;
+    background: linear-gradient(180deg, #FFFDF4 0%, #FFEFC9 100%);
+    border: 2.4vmin solid #FFD98A;
+    box-shadow: 0 2.6vmin 0 #E09A33, 0 4.6vmin 8vmin rgba(11,42,84,.36);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .board svg { width: 34vmin; height: 34vmin; color: #FF5C8A; filter: drop-shadow(0 .8vmin 1.4vmin rgba(201,58,102,.32)); }
+
+  /* 右下角的小骰子，点出「游戏」的意思 */
+  .die {
+    position: absolute; z-index: 2;
+    right: 9vmin; bottom: 8.3vmin;
+    width: 13.4vmin; height: 13.4vmin;
+    border-radius: 3.6vmin;
+    background: linear-gradient(180deg, #FFE9A8 0%, #FFC93C 64%, #EEA727 100%);
+    border: 1.5vmin solid #FFFDF4;
+    box-shadow: 0 1.9vmin 0 #C98500;
+  }
+  .die span {
+    position: absolute; width: 3vmin; height: 3vmin; border-radius: 999px;
+    background: radial-gradient(circle at 34% 30%, #fff 0%, #FF6E8E 48%, #C93A66 100%);
+  }
+  .die span:nth-child(1) { left: 1.6vmin; top: 1.6vmin; }
+  .die span:nth-child(2) { left: 4.4vmin; top: 4.4vmin; }
+  .die span:nth-child(3) { left: 7.2vmin; top: 7.2vmin; }
+
+  /* ── 变体 ── */
+  /* Android 自适应图标：只有中间约 80% 的圆是安全区，骰子会出界，直接去掉 */
+  body[data-variant="maskable"] #icon { border-radius: 0; }
+  body[data-variant="maskable"] .board { width: 46vmin; height: 46vmin; border-radius: 11vmin; }
+  body[data-variant="maskable"] .die { display: none; }
+
+  /* iOS 自己切圆角，所以给满幅方图 */
+  body[data-variant="apple"] #icon { border-radius: 0; }
+  body[data-variant="apple"] .board { width: 54vmin; height: 54vmin; border-radius: 13vmin; }
+  body[data-variant="apple"] .die { right: 12vmin; bottom: 11vmin; width: 12vmin; height: 12vmin; }
+  body[data-variant="apple"] .die span { width: 2.7vmin; height: 2.7vmin; }
+  body[data-variant="apple"] .die span:nth-child(1) { left: 1.4vmin; top: 1.4vmin; }
+  body[data-variant="apple"] .die span:nth-child(2) { left: 3.9vmin; top: 3.9vmin; }
+  body[data-variant="apple"] .die span:nth-child(3) { left: 6.4vmin; top: 6.4vmin; }
+</style>
+</head>
+<body data-variant="any">
+  <div id="icon">
+    <div class="board">
+      <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+        <path d="M12 2.6l8.6 7.3-1.3 1.5L18 10.3v9.6c0 .8-.6 1.4-1.4 1.4H7.4c-.8 0-1.4-.6-1.4-1.4v-9.6l-1.3 1.1L3.4 9.9 12 2.6z"/>
+        <path d="M12 17.2c-1.2-1-2.7-2.2-2.7-3.6 0-1 .8-1.7 1.7-1.7.4 0 .8.2 1 .5.2-.3.6-.5 1-.5.9 0 1.7.7 1.7 1.7 0 1.4-1.5 2.6-2.7 3.6z" fill="#FFFDF4"/>
+      </svg>
+    </div>
+    <div class="die"><span></span><span></span><span></span></div>
+  </div>
+<script>
+  // hash 决定变体
+  var v = (location.hash || '#any').slice(1);
+  if (['any', 'maskable', 'apple'].indexOf(v) < 0) v = 'any';
+  document.body.dataset.variant = v;
+</script>
+</body>
+</html>

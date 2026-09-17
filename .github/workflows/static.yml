@@ -22,8 +22,21 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # 先过规则回归，再发布。engine.js 没有 DOM 依赖，纯 Node 就能整局跑对局，
+  # 所以这一步不需要浏览器、几秒钟出结果。改崩了规则就发不出去。
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: 语法自检
+        run: node tools/check-syntax.mjs
+      - name: 规则回归（无头跑对局断言不变量）
+        run: node tools/smoke.mjs
+
   # Single deploy job since we're just deploying
   deploy:
+    needs: test
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}

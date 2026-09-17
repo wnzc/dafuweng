@@ -1,0 +1,36 @@
+{
+  "name": "大富翁 · 地产小镇",
+  "short_name": "大富翁",
+  "description": "手机竖屏优先的网页版大富翁：买地、建房、收租、拍卖、抵押、破产，24 格环形棋盘，1 人对战 3 个 AI。纯前端零依赖，打开即玩，可离线。",
+  "lang": "zh-CN",
+  "dir": "ltr",
+  "start_url": "./",
+  "scope": "./",
+  "id": "./",
+  "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
+  "orientation": "portrait",
+  "theme_color": "#2E6FBE",
+  "background_color": "#7FC4F0",
+  "categories": ["games", "entertainment"],
+  "icons": [
+    {
+      "src": "./assets/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "./assets/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "./assets/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}

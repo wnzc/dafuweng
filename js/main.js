@@ -57,4 +57,16 @@
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
   else boot();
+
+  /* ---------------- 离线缓存 ----------------
+     纯前端游戏，整套文件加起来不到 300 KB，注册一个 Service Worker
+     就能「添加到主屏幕 + 断网可玩」。
+     用相对路径注册：Pages 上是 /dafuweng/，本地任意目录下也都成立。
+     file:// 直接双击打开时浏览器不支持 SW，这里跳过即可 —— 那种用法本来
+     也就不依赖网络。 */
+  if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
+    window.addEventListener('load', function () {
+      navigator.serviceWorker.register('sw.js').catch(function () { /* 离线能力可选，失败不影响游戏 */ });
+    });
+  }
 })(window.DC);

@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>大富翁 · 地产小镇 — 分享卡（1200×630）</title>
+<!--
+  分享卡版式。由 tools/make-og.mjs 渲染成 assets/og-cover.png。
+  脚本会把本文件连同实时截取的手机画面（.og-board.png）一起复制到临时目录再截图，
+  所以这里用相对路径引用图片即可，仓库里不留中间产物。
+
+  改完版式后重跑：node tools/make-og.mjs
+-->
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html, body { width: 1200px; height: 630px; overflow: hidden; }
+
+  .card {
+    position: relative;
+    width: 1200px; height: 630px;
+    display: flex; align-items: center;
+    padding: 0 64px;
+    background:
+      radial-gradient(120% 130% at 76% 18%, #9FD6F7 0%, #6FB6EC 34%, #3D8FD8 66%, #1B4E96 100%);
+    font-family: "Yuanti SC", "Yuanti TC", "Hiragino Maru Gothic ProN", "PingFang SC", ui-rounded, system-ui, sans-serif;
+    color: #1B2A4A;
+    overflow: hidden;
+  }
+
+  /* 点阵底纹 */
+  .dots {
+    position: absolute; inset: 0;
+    background-image: radial-gradient(circle, rgba(255,255,255,.5) 1.4px, transparent 1.5px);
+    background-size: 30px 30px;
+    -webkit-mask-image: radial-gradient(80% 110% at 20% 40%, #000 0%, transparent 76%);
+            mask-image: radial-gradient(80% 110% at 20% 40%, #000 0%, transparent 76%);
+  }
+  /* 中心放射光，呼应棋盘中央的圆盘 */
+  .rays {
+    position: absolute; left: 62%; top: 46%; width: 1500px; height: 1500px;
+    margin: -750px 0 0 -750px;
+    background: repeating-conic-gradient(from 0deg, rgba(255,255,255,.20) 0deg 5deg, rgba(255,255,255,0) 5deg 15deg);
+    -webkit-mask-image: radial-gradient(closest-side, #000 8%, rgba(0,0,0,.55) 42%, transparent 74%);
+            mask-image: radial-gradient(closest-side, #000 8%, rgba(0,0,0,.55) 42%, transparent 74%);
+  }
+  /* 云 */
+  .cloud { position: absolute; background: rgba(255,255,255,.92); border-radius: 999px; filter: blur(.4px); }
+  .cloud::before, .cloud::after { content: ""; position: absolute; background: inherit; border-radius: 999px; }
+  .c1 { width: 190px; height: 54px; left: -30px; top: 74px; opacity: .75; }
+  .c1::before { width: 96px; height: 96px; left: 26px; top: -42px; }
+  .c1::after  { width: 68px; height: 68px; left: 104px; top: -26px; }
+  .c2 { width: 130px; height: 40px; left: 300px; top: 536px; opacity: .55; }
+  .c2::before { width: 70px; height: 70px; left: 18px; top: -32px; }
+  .c3 { width: 108px; height: 34px; right: 72px; top: 44px; opacity: .45; }
+  .c3::before { width: 58px; height: 58px; left: 16px; top: -26px; }
+
+  /* 金色内框，呼应棋盘的立体边框 */
+  .frame {
+    position: absolute; inset: 18px;
+    border: 4px solid rgba(255,217,138,.85);
+    border-radius: 26px;
+    box-shadow: inset 0 0 0 2px rgba(169,102,26,.35);
+    pointer-events: none;
+  }
+
+  /* ── 左栏 ── */
+  .left { position: relative; width: 588px; padding-right: 24px; }
+
+  .brand { display: flex; align-items: center; gap: 18px; margin-bottom: 22px; }
+  .mark {
+    width: 74px; height: 74px; border-radius: 22px;
+    background: linear-gradient(180deg, #FFFDF4 0%, #FFEFC9 100%);
+    border: 3px solid #FFD98A;
+    box-shadow: 0 6px 0 #E09A33, 0 10px 22px rgba(11,42,84,.30);
+    display: flex; align-items: center; justify-content: center;
+    color: #C93A66;
+  }
+  .mark svg { width: 42px; height: 42px; }
+  .brand__sub { font-size: 21px; font-weight: 700; color: #EAF4FF; letter-spacing: 3px; text-shadow: 0 2px 6px rgba(11,42,84,.35); }
+
+  .title {
+    font-size: 96px; line-height: 1.02; font-weight: 900; letter-spacing: 6px;
+    color: #FFFDF4;
+    text-shadow: 0 4px 0 #C98500, 0 9px 26px rgba(9,36,74,.45);
+    margin-bottom: 6px;
+  }
+  .en {
+    display: inline-block;
+    font-size: 23px; font-weight: 800; letter-spacing: 5px;
+    color: #1B2A4A;
+    background: linear-gradient(180deg, #FFE9A8 0%, #FFC93C 100%);
+    border-radius: 999px; padding: 7px 20px 8px;
+    box-shadow: 0 4px 0 #C98500;
+    margin-bottom: 26px;
+  }
+
+  .lead {
+    font-size: 23px; line-height: 1.62; font-weight: 600; color: #F2F8FF;
+    text-shadow: 0 2px 8px rgba(9,36,74,.34);
+    margin-bottom: 22px;
+  }
+  .lead b { color: #FFD98A; }
+
+  .chips { display: flex; flex-wrap: wrap; gap: 10px; }
+  .chip {
+    font-size: 17px; font-weight: 700; color: #1B2A4A;
+    background: rgba(255,253,244,.9);
+    border: 2px solid rgba(169,102,26,.28);
+    border-radius: 999px;
+    padding: 7px 14px;
+    box-shadow: 0 3px 0 rgba(169,102,26,.22);
+  }
+
+  .url {
+    margin-top: 30px; display: inline-flex; align-items: center; gap: 12px;
+    font-family: "Quicksand", "SF Pro Rounded", "Yuanti SC", system-ui, sans-serif;
+    font-size: 25px; font-weight: 800; letter-spacing: .5px;
+    color: #6B3A00;
+    background: linear-gradient(180deg, #FFE9A8 0%, #FFC93C 100%);
+    border-radius: 999px; padding: 12px 26px 13px;
+    box-shadow: 0 5px 0 #C98500, 0 12px 24px rgba(9,36,74,.28);
+  }
+  .url i {
+    width: 30px; height: 30px; border-radius: 999px;
+    background: #FFFDF4; border: 2px solid #C98500;
+    display: inline-flex; align-items: center; justify-content: center;
+  }
+  .url i::after {
+    content: ""; width: 12px; height: 12px; border-radius: 999px; background: #35C1F0;
+  }
+
+  /* ── 右栏：真机画面 ── */
+  .right { position: relative; flex: 1; display: flex; justify-content: center; align-items: center; }
+
+  .phone {
+    position: relative;
+    height: 540px;
+    border-radius: 28px;
+    background: #FFFDF4;
+    border: 6px solid #FFD98A;
+    box-shadow: 0 14px 0 #C98500, 0 30px 54px rgba(9,36,74,.42);
+    overflow: hidden;
+    transform: rotate(-1.6deg);
+  }
+  .phone img { display: block; height: 100%; width: auto; }
+
+  /* 悬停的金色骰子 */
+  .die {
+    position: absolute; right: 4px; bottom: 22px;
+    width: 104px; height: 104px; border-radius: 26px;
+    background: linear-gradient(180deg, #FFE9A8 0%, #FFC93C 62%, #EEA727 100%);
+    border: 3px solid #FFFDF4;
+    box-shadow: 0 8px 0 #C98500, 0 18px 30px rgba(9,36,74,.40);
+    transform: rotate(9deg);
+  }
+  .die span {
+    position: absolute; width: 23px; height: 23px; border-radius: 999px;
+    background: radial-gradient(circle at 34% 30%, #fff 0%, #FF6E8E 46%, #C93A66 100%);
+    box-shadow: inset 0 -2px 3px rgba(120,20,50,.45);
+  }
+  .die span:nth-child(1) { left: 19px; top: 19px; }
+  .die span:nth-child(2) { left: 41px; top: 41px; }
+  .die span:nth-child(3) { left: 63px; top: 63px; }
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="dots"></div>
+  <div class="rays"></div>
+  <span class="cloud c1"></span>
+  <span class="cloud c2"></span>
+  <span class="cloud c3"></span>
+
+  <div class="left">
+    <div class="brand">
+      <span class="mark">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+             stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3.8 11.4L12 4.4l8.2 7M6.2 10.2v8.6a1.4 1.4 0 0 0 1.4 1.4h8.8a1.4 1.4 0 0 0 1.4-1.4v-8.6"/>
+          <path d="M12 16.6c-1-.9-2.4-2-2.4-3.2a1.4 1.4 0 0 1 2.4-1 1.4 1.4 0 0 1 2.4 1c0 1.2-1.4 2.3-2.4 3.2z"
+                fill="currentColor" stroke="none"/>
+        </svg>
+      </span>
+      <span class="brand__sub">网页大富翁</span>
+    </div>
+
+    <div class="title">大富翁</div>
+    <div class="en">地产小镇 · CUTE TYCOON</div>
+
+    <p class="lead">
+      手机竖屏优先的网页版大富翁：买地、建房、收租、拍卖、抵押、破产，
+      <b>1 人对战 3 个 AI</b>，24 格环形棋盘。
+    </p>
+
+    <div class="chips">
+      <span class="chip">纯前端·零依赖</span>
+      <span class="chip">打开即玩</span>
+      <span class="chip">可加到主屏</span>
+      <span class="chip">断网可玩</span>
+    </div>
+
+    <div class="url"><i></i>wnzc.github.io/dafuweng</div>
+  </div>
+
+  <div class="right">
+    <div class="phone">
+      <img src=".og-board.png" alt="">
+    </div>
+    <div class="die"><span></span><span></span><span></span></div>
+  </div>
+
+  <div class="frame"></div>
+</div>
+</body>
+</html>
