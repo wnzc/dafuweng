@@ -1060,7 +1060,7 @@ window.DC = window.DC || {};
         '<button class="menu__item" id="mRules">' + icon('i-book') + '<span>规则说明</span></button>' +
         '<button class="menu__item" id="mSettings">' + icon('i-gear') + '<span>设置</span></button>' +
         '<button class="menu__item" id="mNew">' + icon('i-restart') + '<span>重新开局</span></button>';
-      this.sheet({ eyebrow: '菜单 · MENU', title: '大富翁 · 地产交易所', sub: '第 ' + this.e.state.round + ' 回合', body: body, actions: [] });
+      this.sheet({ eyebrow: '菜单 · MENU', title: '大富翁 · 地产小镇', sub: '第 ' + this.e.state.round + ' 回合', body: body, actions: [] });
       var go = function (fn) { return function () { self.closeSheet(); setTimeout(fn, 240); }; };
       document.getElementById('mLog').addEventListener('click', go(function () { self.openLog(); }));
       document.getElementById('mRules').addEventListener('click', go(function () { self.openRules(); }));
@@ -1088,7 +1088,7 @@ window.DC = window.DC || {};
         actions.unshift({ label: '继续上次对局', kind: 'ghost', onClick: function () { self.resumeGame(); } });
       }
       this.sheet({
-        eyebrow: '大富翁 · 地产交易所',
+        eyebrow: '大富翁 · 地产小镇',
         title: '开局',
         sub: '1930 · 上海地产',
         body: body,

@@ -8,8 +8,15 @@ import { fileURLToPath } from 'node:url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, '..');
 const certDir = path.join(root, '.cert');
-const key = fs.readFileSync(path.join(certDir, 'key.pem'));
-const cert = fs.readFileSync(path.join(certDir, 'cert.pem'));
+let key, cert;
+try {
+  key = fs.readFileSync(path.join(certDir, 'key.pem'));
+  cert = fs.readFileSync(path.join(certDir, 'cert.pem'));
+} catch (e) {
+  console.error('缺少自签证书：' + path.join(certDir, 'key.pem') + ' / cert.pem');
+  console.error('证书不入库，首次使用或换了网络后先生成：bash tools/make-cert.sh');
+  process.exit(1);
+}
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',

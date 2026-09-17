@@ -1,7 +1,9 @@
-# 大富翁 · 地产交易所
+# 大富翁 · 地产小镇
 
 装饰艺术（Art Deco）风格的网页版大富翁，手机竖屏优先，1 人对战 3 个 AI。
 纯前端、零依赖、零构建：**双击 `index.html` 就能玩**。
+
+线上：<https://wnzc.github.io/dafuweng/>（push 到 `main` 自动发布）
 
 ## 运行
 
@@ -56,6 +58,7 @@ js/ui.js          渲染、骰子动画、弹层（地契 / 拍卖 / 筹款 / �
 js/main.js        启动与偏好设置
 docs/…            设计规格
 tools/            开发期验证脚本（可选，不影响游戏运行）
+tools/make-cert.sh  生成本地调试用自签 HTTPS 证书（证书不入库）
 ```
 
 ## 设计说明
@@ -74,6 +77,19 @@ tools/            开发期验证脚本（可选，不影响游戏运行）
 
 ## 开发期验证（可选）
 
+### 手机上跑真机（震动反馈需要 HTTPS）
+
+`navigator.vibrate` 只在安全上下文开放，所以局域网调试必须走 HTTPS：
+
+```bash
+bash tools/make-cert.sh       # 生成自签证书（不入库；换网络后重跑，脚本会重新探测本机 IP）
+node tools/serve-https.mjs    # → https://<本机IP>:8766
+```
+
+首次需在手机上安装并信任 `.cert/cert.pem`（iOS：设置 → 通用 → 关于本机 → 证书信任设置），换新证书后要重做一次。
+
+### 无人值守驱动 / 截图
+
 ```bash
 # 需要本地 Chrome + Node 22
 python3 -m http.server 8765 &
@@ -86,9 +102,13 @@ node tools/drive.mjs shot out.png 390 844                # 截图
 node tools/drive.mjs watch 2000                          # 收集控制台异常
 ```
 
-`tools/ocr.swift` 是 macOS Vision OCR 小工具，用于在没有视觉模型时读屏幕文字：
+`tools/ocr.swift` 是 macOS Vision OCR 小工具，用于在没有视觉模型时读屏幕文字（编译产物 `tools/bin/` 不入库）：
 
 ```bash
 swiftc -module-cache-path ./tools/.mcache -o tools/bin/ocr tools/ocr.swift
 ./tools/bin/ocr out.png 0.3
 ```
+
+## 许可
+
+[MIT](LICENSE)

@@ -1,3 +1,15 @@
 prompts/
 cover/
 ai-daily/
+
+# 本地开发凭据：自签 HTTPS 证书（tools/serve-https.mjs 用），绝不入库
+.cert/
+
+# 开发期临时产物
+.http-server.*
+tools/bin/
+tools/.mcache
+.DS_Store
+
+# 本地工作区数据（AI 会话记忆等），不入库
+.workbuddy/
