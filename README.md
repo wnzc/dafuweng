@@ -204,8 +204,10 @@ node tools/make-icons.mjs            # → assets/icon-192/512、maskable、appl
 - **环的直径口径**：全局是 `box-sizing: border-box`，所以 `.ring` 的 `width` 就是**外径**。
   环上格子的 `translateY` 必须等于 `(外径 + 内径) / 4` —— 也就是 `layoutCells()` 里那个 `radius`，
   改 `border-width` 时两处要一起改，否则格子会飘到环外面去。
-- **改完必须 bump `sw.js` 的 `CACHE` 版本号**：四个 PNG 的文件名没变，而 Service Worker 是
-  缓存优先，不换版本号的话已装 PWA 的用户会一直看到旧图标。
+- **改完图标记得 bump `sw.js` 的 `CACHE` 版本号**：四个 PNG 的文件名没变，而 Service Worker
+  是「缓存优先 + 后台回写」，不 bump 的话老用户要等下一次访问才换到新图；bump 能借 `install`
+  阶段立即预缓存新内容，并顺手清掉旧缓存。注意**已经装到桌面的那个图标归操作系统管**，
+  不受 Service Worker 影响 —— 想让它立刻变，通常得删掉重装。
 
 ### 手机上跑真机
 
