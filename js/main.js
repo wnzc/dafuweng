@@ -19,7 +19,8 @@
   function saveSettings(s) {
     try {
       localStorage.setItem(SETTINGS_KEY, JSON.stringify({
-        sound: s.sound, music: s.music, haptics: s.haptics, speed: s.speed, reducedMotion: s.reducedMotion
+        sound: s.sound, music: s.music, haptics: s.haptics, speed: s.speed,
+        reducedMotion: s.reducedMotion, classicRules: s.classicRules !== false
       }));
     } catch (e) {}
   }

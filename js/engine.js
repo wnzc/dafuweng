@@ -50,6 +50,9 @@ window.DC = window.DC || {};
       music: true,
       haptics: true,
       speed: 1,
+      // 经典建房规则：集齐同组全部地产才能在该组建房、同组不得有抵押、
+      // 同组房屋数要均衡。关掉则退回「单块地也能一路升到酒店」的宽松规则。
+      classicRules: true,
       // 默认不跟随系统「减少动画」，避免游戏动效被系统设置整锅关掉；
       // 仍可在设置里手动打开。
       reducedMotion: false
@@ -403,12 +406,9 @@ window.DC = window.DC || {};
 
     /* 落在自己的地上：询问是否升级 */
     async offerUpgrade(p, cell, id) {
-      if (this.state.mortgaged[cell.i]) {
-        this.log(cell.name + ' 已抵押，无法升级', 'info');
-        return;
-      }
-      if (!this.canUpgradeLevel(p, cell.i)) {
-        this.log(cell.name + ' 是 ' + p.name + ' 自己的产业' + ((this.state.houses[cell.i] || 0) >= C.maxHouses ? '（已满级）' : ''), 'info');
+      var block = this.upgradeBlock(p, cell.i);
+      if (block) {
+        this.log(this.upgradeBlockText(p, cell, block), 'info');
         return;
       }
       if (p.isAI) {
@@ -644,15 +644,48 @@ window.DC = window.DC || {};
     },
 
     /* ---------- 地产经营 ---------- */
-    /* 规则上是否可再升一级（不含现金） */
-    canUpgradeLevel: function (p, i) {
+    /* 不能建房的原因；返回 null 表示可以建。
+       classicRules 开启时套用经典约束，三条都只作用于成组的地产（prop）：
+         —— 集齐同组才能建：不然「集齐整组」这个目标没有分量，
+            也让玩家之间换地、买地彻底失去动机；
+         —— 同组不得有抵押：抵押掉的那块会被对手忽略，等于拆自己的整组；
+         —— 均级建造，同组房屋数差不超过 1：避免把单块地直接堆到酒店。
+       车站与公用事业没有「组」，租金按持有数量计价，不套这三条。 */
+    upgradeBlock: function (p, i) {
       var c = CELLS[i];
-      if (!c || !c.houseCost) return false;
-      if (c.type !== 'prop' && c.type !== 'rail' && c.type !== 'util') return false;
-      if (this.state.owners[i] !== p.id) return false;
-      if (this.state.mortgaged[i]) return false;
-      if ((this.state.houses[i] || 0) >= C.maxHouses) return false;
-      return true;
+      if (!c || !c.houseCost) return 'not-buildable';
+      if (c.type !== 'prop' && c.type !== 'rail' && c.type !== 'util') return 'not-buildable';
+      if (this.state.owners[i] !== p.id) return 'not-owner';
+      if (this.state.mortgaged[i]) return 'mortgaged';
+      if ((this.state.houses[i] || 0) >= C.maxHouses) return 'max';
+      if (this.settings.classicRules !== false && c.type === 'prop') {
+        if (!this.ownsGroup(p, c.group)) return 'need-group';
+        if (this.groupHasMortgage(c.group)) return 'group-mortgaged';
+        if ((this.state.houses[i] || 0) > this.groupMin(c.group)) return 'even-build';
+      }
+      return null;
+    },
+
+    /* 规则上是否可再升一级（不含现金） */
+    canUpgradeLevel: function (p, i) { return this.upgradeBlock(p, i) === null; },
+
+    /* 把阻塞原因说成人话，战报与地契提示共用 */
+    upgradeBlockText: function (p, cell, block) {
+      var group = cell.type === 'prop' ? ((DC.GROUPS[cell.group] || {}).name || cell.group) : '';
+      switch (block) {
+        case 'max':
+          return cell.name + ' 是 ' + p.name + ' 自己的产业（已满级）';
+        case 'need-group':
+          return cell.name + ' 需集齐 ' + group + ' 组全部地产才能建房';
+        case 'group-mortgaged':
+          return group + ' 组内有地产处于抵押，赎回后才能建房';
+        case 'even-build':
+          return group + ' 组的房屋需均衡建造（同组最少 ' + this.groupMin(cell.group) + ' 栋）';
+        case 'mortgaged':
+          return cell.name + ' 已抵押，无法升级';
+        default:
+          return cell.name + ' 当前无法升级';
+      }
     },
 
     canBuild: function (p, i) {
@@ -934,6 +967,11 @@ window.DC = window.DC || {};
       if (cell.type === 'util') return left >= 1500;
       return left >= 1200;
     },
+    /* 回合开始主动建房：当前未被调用。
+       现行规则只在「落到自己已有地上」时才升级（见文件末尾 runTurn 的包装器），
+       保留它是为了将来做「回合开始可建房」的可选规则时不必重写估值逻辑。
+       注意 classicRules 开启后建房门槛更高（需集齐整组、均级建造），
+       若真要启用这个函数，得先让它理解整组约束。 */
     aiShouldBuild: function (p) {
       var self = this;
       if (p.cash < 4000) return null;

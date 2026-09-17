@@ -888,8 +888,10 @@ window.DC = window.DC || {};
       var actions = [{ label: '知道了', kind: 'primary' }];
       var p = s.players[s.current];
       var hint = '';
-      if (p && !p.isAI && s.owners[i] === p.id && e.canUpgradeLevel(p, i) && cell.houseCost) {
-        hint = '再次落在这里时可升级（' + money(cell.houseCost) + '）';
+      if (p && !p.isAI && s.owners[i] === p.id && cell.houseCost) {
+        var block = e.upgradeBlock(p, i);
+        if (!block) hint = '再次落在这里时可升级（' + money(cell.houseCost) + '）';
+        else if (block !== 'max') hint = e.upgradeBlockText(p, cell, block);
       }
       this.sheet({
         eyebrow: DC.TYPE_LABEL[cell.type] + ' · ' + (cell.type === 'prop' ? cell.group + ' 组' : ''),
@@ -977,6 +979,7 @@ window.DC = window.DC || {};
         '<h3>回合</h3><p>掷一枚骰子前进对应步数。</p>' +
         '<h3>买地与租金</h3><p>停在无主地产可以选择买下或转入拍卖。停在他人地产需付租金：集齐同组全部地产空地租金翻倍，升级后租金更高。</p>' +
         '<h3>升级土地</h3><p>再次停在<strong>自己已买下</strong>的地块（含车站、水厂、电厂）时，会提示是否升级。地产、车站、公用事业都可升到满级；也可在地契里拆除或抵押。</p>' +
+        '<h3>经典建房规则</h3><p>默认开启，三条限制只作用于分组的<strong>地产</strong>：必须先<strong>集齐同组全部地产</strong>才能在该组建房；同组内房屋数要均衡（相差不超过 1 栋）；同组内有地块处于抵押状态时不能建房。车站与公用事业没有分组、租金按持有数量计价，不受这三条限制。</p><p>觉得节奏太慢，可以在「设置」里关掉，退回「单块地即可一路升到酒店」的宽松规则。</p>' +
         '<h3>监狱</h3><p>入狱后可缴纳保释金、使用出狱许可证，或掷骰求 6。三回合未掷出 6 将强制保释。</p>' +
         '<h3>卡牌与税收</h3><p>机会与命运会带来收益、罚款、位移或入狱。缴纳的罚款会进入免费停车场的奖池，停在停车场即可全部领取。</p>' +
         '<h3>破产</h3><p>现金不足时必须变卖资产；仍无法支付则宣告破产，产业转给债主（或由银行收回）。</p>' +
@@ -992,6 +995,7 @@ window.DC = window.DC || {};
         '<div class="row"><span>背景音乐</span><button type="button" class="switch" id="swMusic" role="switch"></button></div>' +
         '<div class="row"><span>震动反馈</span><button type="button" class="switch" id="swHaptic" role="switch"></button></div>' +
         '<div class="row"><span>减少动画</span><button type="button" class="switch" id="swMotion" role="switch"></button></div>' +
+        '<div class="row"><span>经典建房规则</span><button type="button" class="switch" id="swClassic" role="switch"></button></div>' +
         '<div class="row"><span>动画速度</span><div class="seg" id="segSpeed">' +
           '<button type="button" data-v="0.65">慢</button><button type="button" data-v="1">标准</button><button type="button" data-v="1.7">快</button>' +
         '</div></div>' +
@@ -1002,6 +1006,7 @@ window.DC = window.DC || {};
       var swM = document.getElementById('swMusic');
       var swH = document.getElementById('swHaptic');
       var swR = document.getElementById('swMotion');
+      var swC = document.getElementById('swClassic');
       var sync = function () {
         swS.classList.toggle('is-on', e.settings.sound);
         swS.setAttribute('aria-checked', String(e.settings.sound));
@@ -1011,6 +1016,8 @@ window.DC = window.DC || {};
         swH.setAttribute('aria-checked', String(e.settings.haptics));
         swR.classList.toggle('is-on', !!e.settings.reducedMotion);
         swR.setAttribute('aria-checked', String(!!e.settings.reducedMotion));
+        swC.classList.toggle('is-on', e.settings.classicRules !== false);
+        swC.setAttribute('aria-checked', String(e.settings.classicRules !== false));
       };
       sync();
       swS.addEventListener('click', function () {
@@ -1035,6 +1042,14 @@ window.DC = window.DC || {};
         self.applyMotion();
         if (DC.saveSettings) DC.saveSettings();
         sync();
+      });
+      swC.addEventListener('click', function () {
+        e.settings.classicRules = e.settings.classicRules === false;
+        if (DC.saveSettings) DC.saveSettings();
+        sync();
+        self.toast(e.settings.classicRules
+          ? '已开启经典建房规则：集齐整组才能建房'
+          : '已关闭经典建房规则：单块地即可建房', 'info');
       });
       var seg = document.getElementById('segSpeed');
       seg.querySelectorAll('button').forEach(function (b) {
@@ -1080,7 +1095,9 @@ window.DC = window.DC || {};
         '</div>' +
         '<ul class="start__hint">' +
           '<li>' + icon('i-coin') + '起步资金 ' + money(C.startCash) + '，经过起点领 ' + money(C.goSalary) + '</li>' +
-          '<li>' + icon('i-house') + '再次停在自己的地上，可升级提高租金</li>' +
+          '<li>' + icon('i-house') + (e.settings.classicRules !== false
+            ? '集齐同组地产后才能建房，再次停在自己的地上即可升级'
+            : '再次停在自己的地上，可升级提高租金') + '</li>' +
           '<li>' + icon('i-jail') + '保释金 ' + money(C.jailFine) + '，也可以掷 6 出狱</li>' +
         '</ul>';
       var actions = [{ label: '开始新对局', kind: 'primary', icon: 'i-dice', onClick: function () { self.startGame(count); } }];

@@ -77,8 +77,8 @@ function createWorld(seed) {
    对局退化成纯微任务，上千回合也只要几百毫秒。 */
 const FAST = { sound: false, music: false, haptics: false, reducedMotion: true, speed: 1000 };
 
-function makeEngine(DC, { humanPolicy, onState }) {
-  const eng = new DC.Engine({}, FAST);
+function makeEngine(DC, { humanPolicy, onState, settings }) {
+  const eng = new DC.Engine({}, Object.assign({}, FAST, settings || {}));
   eng.__DC = DC;                       // 测试用：把数据表挂回引擎
   const stats = { asks: 0, byType: {} };
   const cov = {};                      // 路径覆盖：证明这些规则分支真被跑到了
@@ -290,13 +290,14 @@ function makeChecker(world) {
 }
 
 /* ---------------- 跑一局 ---------------- */
-async function playGame(seed, policyName, checker, world, rounds) {
+async function playGame(seed, policyName, checker, world, rounds, classic = true) {
   const { DC } = world;
   const policy = POLICIES[policyName];
   const fails = [];
 
   const { eng, stats, cov } = makeEngine(DC, {
     humanPolicy: (a, e) => policy(a, e),
+    settings: { classicRules: classic },
     onState: (e) => {
       if (e.state.__capped) return;
       checker(e, `第 ${e.state.round} 回合`, (m) => fails.push(m));
@@ -316,7 +317,7 @@ async function playGame(seed, policyName, checker, world, rounds) {
   const s = eng.state;
 
   return {
-    seed, policy: policyName, over: s.over, capped: !!s.__capped,
+    seed, policy: policyName, over: s.over, capped: !!s.__capped, classic,
     round: s.round, asks: stats.asks, byType: stats.byType,
     alive: s.players.filter((p) => !p.bankrupt).length,
     winner: (s.over && !s.__capped && s.ranking) ? s.players[s.ranking[0]].name : null,
@@ -361,6 +362,11 @@ const group = (name) => { const g = { name, pass: 0, fail: [], notes: [] }; grou
   const { DC } = world;
   const mk = (n) => { const { eng } = makeEngine(DC, { humanPolicy: POLICIES.normal }); eng.newGame(n || 4); return eng; };
   const ok = (cond, msg) => { if (cond) g.pass++; else g.fail.push(msg); };
+  // 默认开启经典建房规则，建房前需集齐整组 —— 测试里直接发放整组地产
+  const grant = (e, p, cells) => cells.forEach((i) => {
+    e.state.owners[i] = p.id;
+    if (p.props.indexOf(i) < 0) p.props.push(i);
+  });
 
   // 集齐同组，基础租金翻倍
   {
@@ -407,8 +413,8 @@ const group = (name) => { const g = { name, pass: 0, fail: [], notes: [] }; grou
   {
     const e = mk(), p0 = e.player(0), p1 = e.player(1);
     ok(!e.canUpgradeLevel(p1, 1), '不是自己的地不应允许升级');
-    e.state.owners[1] = p0.id; p0.props.push(1);
-    ok(e.canUpgradeLevel(p0, 1), '自有未满级地应允许升级');
+    grant(e, p0, DC.GROUP_CELLS.A);        // 经典规则：先集齐整组才能建房
+    ok(e.canUpgradeLevel(p0, 1), '集齐整组后自有未满级地应允许升级');
     e.state.houses[1] = DC.CONFIG.maxHouses;
     ok(!e.canUpgradeLevel(p0, 1), `已到 ${DC.CONFIG.maxHouses} 级不应允许继续升级`);
     e.state.houses[1] = 1; e.state.mortgaged[1] = true;
@@ -416,10 +422,51 @@ const group = (name) => { const g = { name, pass: 0, fail: [], notes: [] }; grou
     ok(!e.canUpgradeLevel(p0, 0), '起点不应允许升级');
   }
 
-  // 升级扣款、拆房回款
+  // 经典建房规则：集齐整组 / 均级建造 / 同组无抵押
   {
     const e = mk(), p0 = e.player(0);
     e.state.owners[1] = p0.id; p0.props.push(1);
+    ok(e.upgradeBlock(p0, 1) === 'need-group', '未集齐整组时应禁止建房');
+
+    grant(e, p0, DC.GROUP_CELLS.A);
+    ok(e.upgradeBlock(p0, 1) === null, '集齐整组后应允许建房');
+
+    ok(e.buyHouse(p0, 1) && e.state.houses[1] === 1, '同组拉平时第一次建房应成功');
+    ok(e.upgradeBlock(p0, 1) === 'even-build', '同组房屋不均衡时应禁止继续升同一块');
+    ok(e.buyHouse(p0, 3) && e.state.houses[3] === 1, '应允许升同组房屋较少的那块');
+    ok(e.upgradeBlock(p0, 1) === null, '同组拉平后应恢复可建');
+
+    delete e.state.houses[1]; delete e.state.houses[3];    // 清空房屋后再测抵押约束
+    e.mortgage(p0, 3);
+    ok(e.upgradeBlock(p0, 1) === 'group-mortgaged', '同组有抵押地时应禁止建房');
+    e.unmortgage(p0, 3);
+    ok(e.upgradeBlock(p0, 1) === null, '同组赎回后应恢复可建');
+  }
+
+  // 车站与公用事业没有分组，不套经典建房规则
+  {
+    const e = mk(), p0 = e.player(0);
+    e.state.owners[16] = p0.id; p0.props.push(16);
+    ok(e.upgradeBlock(p0, 16) === null, '只持有一座车站也应能升级');
+  }
+
+  // 关掉 classicRules → 退回「单块地即可建房」
+  {
+    const e = mk(2);
+    e.settings.classicRules = false;
+    const p0 = e.player(0);
+    e.state.owners[1] = p0.id; p0.props.push(1);
+    ok(e.canUpgradeLevel(p0, 1), '关闭经典规则后单块地应可建房');
+    for (let k = 0; k < 8; k++) e.buyHouse(p0, 1);
+    ok(e.state.houses[1] === DC.CONFIG.maxHouses,
+      `宽松规则下应能升到 ${DC.CONFIG.maxHouses} 级，实得 ${e.state.houses[1]}`);
+    ok(!e.canUpgradeLevel(p0, 3), '未持有的地始终不能建房');
+  }
+
+  // 升级扣款、拆房回款
+  {
+    const e = mk(), p0 = e.player(0);
+    grant(e, p0, DC.GROUP_CELLS.A);
     const before = p0.cash;
     e.buyHouse(p0, 1);
     ok(p0.cash === before - DC.CELLS[1].houseCost && e.state.houses[1] === 1,
@@ -555,7 +602,7 @@ const group = (name) => { const g = { name, pass: 0, fail: [], notes: [] }; grou
   {
     const e = mk(2);
     const me = e.player(0);
-    e.state.owners[1] = me.id; me.props.push(1);
+    grant(e, me, DC.GROUP_CELLS.A);
     me.cash = 15000; me.pos = 1;
     e.state.round = 5;                       // normal 策略第 2 回合后才升
     await e.resolveLanding(me, e._loopId, 0);
@@ -635,15 +682,20 @@ const group = (name) => { const g = { name, pass: 0, fail: [], notes: [] }; grou
   const policies = ['normal', 'cautious', 'reckless'];
   let totalAsks = 0, totalRounds = 0, capped = 0, ended = 0, totalHouses = 0, totalOwned = 0;
   const byType = {}, cov = {};
+  // 两种建房规则各跑一半：既覆盖两条分支，也能量化对局长度差异
+  const byRules = { classic: { n: 0, rounds: 0, houses: 0 }, simple: { n: 0, rounds: 0, houses: 0 } };
 
   for (let i = 0; i < GAMES; i++) {
     const seed = SEED0 + i;
     const policy = policies[i % policies.length];
+    const classic = i % 2 === 0;
     const world = createWorld(seed);
     const checker = makeChecker(world);
-    const r = await playGame(seed, policy, checker, world, MAX_ROUNDS);
+    const r = await playGame(seed, policy, checker, world, MAX_ROUNDS, classic);
     totalAsks += r.asks; totalRounds += r.round; totalHouses += r.houses; totalOwned += r.owned;
     if (r.capped) capped++; else if (r.over) ended++;
+    const b = byRules[classic ? 'classic' : 'simple'];
+    b.n++; b.rounds += r.round; b.houses += r.houses;
     Object.entries(r.byType).forEach(([k, v]) => { byType[k] = (byType[k] || 0) + v; });
     Object.entries(r.cov).forEach(([k, v]) => { cov[k] = (cov[k] || 0) + v; });
     if (r._fails.length) {
@@ -652,7 +704,7 @@ const group = (name) => { const g = { name, pass: 0, fail: [], notes: [] }; grou
     } else g.pass++;
     if (VERBOSE) {
       console.log(C.dim(
-        `  种子 ${String(seed).padEnd(4)} ${policy.padEnd(9)} 回合 ${String(r.round).padStart(4)} ` +
+        `  种子 ${String(seed).padEnd(4)} ${policy.padEnd(9)} ${classic ? '经典' : '宽松'} 回合 ${String(r.round).padStart(4)} ` +
         `存活 ${r.alive} 地产 ${String(r.owned).padStart(2)} 房 ${String(r.houses).padStart(3)} ` +
         `${r.over ? (r.capped ? '触及回合上限' : '自然结束 → ' + r.winner) : '未结束'} ` +
         `决策 ${String(r.asks).padStart(4)} hash=${r.hash}`
@@ -661,6 +713,12 @@ const group = (name) => { const g = { name, pass: 0, fail: [], notes: [] }; grou
   }
   g.notes.push(`${GAMES} 局 · 合计 ${totalRounds} 回合 / ${totalAsks} 次人类决策 · 自然结束 ${ended} 局、触顶收尾 ${capped} 局`);
   g.notes.push(`终局平均：地产 ${(totalOwned / GAMES).toFixed(1)} 处、房屋 ${(totalHouses / GAMES).toFixed(1)} 栋`);
+  g.notes.push('建房规则对比 ' + ['classic', 'simple'].map((k) => {
+    const x = byRules[k];
+    if (!x.n) return '';
+    return `${k === 'classic' ? '经典' : '宽松'} ${x.n} 局：平均 ${(x.rounds / x.n).toFixed(0)} 回合、`
+      + `${(x.houses / x.n).toFixed(1)} 栋房屋`;
+  }).filter(Boolean).join(' · '));
   g.notes.push('决策分布 ' + Object.entries(byType).sort((a, b) => b[1] - a[1])
     .map(([k, v]) => `${k}:${v}`).join(' '));
 
