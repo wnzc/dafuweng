@@ -1768,7 +1768,9 @@ button { font: inherit; color: inherit; }
   .dock__main .btn__label { font-size: 15px; }
 }
 
-/* ---------- 22. 卡牌大全（弹层内，左名右述的表格） ---------- */
+/* ---------- 22. 卡牌大全（弹层内，左名右述的表格） ----------
+   .cardsheet__how 是「弹层里的一段说明小字」，卡牌大全的每组导语、
+   以及拆房 / 抵押 / 弃牌那几张确认弹层都复用它。 */
 .cardsheet { display: grid; gap: 16px; }
 .cardsheet h3 { margin: 0 0 3px; font-size: 13.5px; font-weight: 900; color: var(--ink); }
 .cardsheet__how { margin: 0 0 7px; font-size: 11.5px; font-weight: 800; line-height: 1.6; color: var(--ink-3); }

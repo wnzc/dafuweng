@@ -73,7 +73,7 @@ window.DC = window.DC || {};
       case 'noRent':
         return '本回合踩到他人地产免付一次租金；抵押中的地产本来就免租，不会消耗护盾。';
       case 'doubleRent':
-        return '本回合你收到的租金翻倍，回合结束即失效。';
+        return '从这一刻起、直到你下一次回合开始，别人踩到你的地租金翻倍。';
       default:
         return '';
     }
@@ -1046,10 +1046,32 @@ window.DC = window.DC || {};
       box.querySelectorAll('button[data-act]').forEach(function (b) {
         b.addEventListener('click', function () {
           var i = +b.dataset.i;
-          if (b.dataset.act === 'build') e.buyHouse(p, i);
-          else if (b.dataset.act === 'sell') e.sellHouse(p, i);
-          else if (b.dataset.act === 'mortgage') e.mortgage(p, i);
-          else if (b.dataset.act === 'unmortgage') e.unmortgage(p, i);
+          var c = CELLS[i];
+          // 赎回是花钱把自己救回来，方向安全，一键即可
+          if (b.dataset.act === 'unmortgage') { e.unmortgage(p, i); return; }
+          // 拆房只回半价、抵押要 110% 才赎得回来 —— 都不可逆，过一道确认
+          if (b.dataset.act === 'sell') {
+            self.confirmAction({
+              eyebrow: '拆除房屋',
+              title: c.name,
+              sub: '收回 ' + money(Math.round((c.houseCost || 0) * C.houseSellRate)) + '（半价）',
+              body: '<p class="cardsheet__how">房屋拆掉就回不来了，这块地的租金会跟着降一级。</p>',
+              okLabel: '拆掉',
+              onOk: function () { e.sellHouse(p, i); }
+            });
+            return;
+          }
+          if (b.dataset.act === 'mortgage') {
+            self.confirmAction({
+              eyebrow: '抵押地产',
+              title: c.name,
+              sub: '拿到 ' + money(Math.round(c.price * C.mortgageRate)) +
+                '，赎回要付 ' + money(Math.round(c.price * C.mortgageRate * C.unmortgageRate)),
+              body: '<p class="cardsheet__how">抵押期间别人踩到这块地不收租金；带房屋的地要先拆完房屋才能抵押。</p>',
+              okLabel: '抵押',
+              onOk: function () { e.mortgage(p, i); }
+            });
+          }
         });
       });
     },
@@ -1079,21 +1101,80 @@ window.DC = window.DC || {};
         for (var k = 0; k < C.maxItems; k++) {
           var it = list[k] ? DC.ITEM_BY_ID[list[k]] : null;
           html += it
-            ? '<button type="button" class="hand__card" data-k="' + k + '" title="' + esc(it.text) + '">' +
+            ? '<button type="button" class="hand__card" data-k="' + k + '"' +
+                ' title="' + esc(it.text) + '　长按可丢弃">' +
                 '<span class="hand__ico">' + icon(it.icon) + '</span>' +
                 '<b class="hand__name">' + esc(it.name) + '</b>' +
               '</button>'
             : '<span class="hand__card is-empty" aria-hidden="true"></span>';
         }
         box.innerHTML = html;
-        box.querySelectorAll('.hand__card[data-k]').forEach(function (b) {
-          b.addEventListener('click', function () { self.onHandPick(+b.dataset.k); });
-        });
+        box.querySelectorAll('.hand__card[data-k]').forEach(function (b) { self.bindHandCard(b); });
       }
       box.querySelectorAll('.hand__card[data-k]').forEach(function (b) { b.classList.toggle('is-ready', can); });
       box.setAttribute('aria-label', list.length
         ? '手牌 ' + list.length + ' 张' + (can ? '，现在可以出牌' : '')
         : '手牌为空');
+    },
+
+    /* 单张手牌：点一下出牌，长按 550ms 改为丢弃。
+       丢弃是不可逆的（少一张牌），所以长按之后还要过一次确认弹层。 */
+    bindHandCard: function (b) {
+      var self = this;
+      var timer = null, longPressed = false;
+      var down = function (ev) {
+        if (ev && ev.button !== undefined && ev.button !== 0) return;   // 右键不参与长按
+        longPressed = false;
+        timer = setTimeout(function () {
+          timer = null;
+          longPressed = true;
+          self.confirmDiscard(+b.dataset.k);
+        }, 550);
+      };
+      var up = function () { if (timer) { clearTimeout(timer); timer = null; } };
+      b.addEventListener('pointerdown', down);
+      b.addEventListener('pointerup', up);
+      b.addEventListener('pointerleave', up);
+      b.addEventListener('pointercancel', up);
+      b.addEventListener('contextmenu', function (ev) { ev.preventDefault(); });
+      b.addEventListener('click', function (ev) {
+        if (longPressed) { longPressed = false; ev.preventDefault(); return; }
+        self.onHandPick(+b.dataset.k);
+      });
+    },
+
+    /* 长按手牌后的确认。不能丢的时候（不是自己的回合）给一句提示就收 */
+    confirmDiscard: function (idx) {
+      var self = this, e = this.e, me = this.humanPlayer();
+      var it = me && DC.ITEM_BY_ID[(me.items || [])[idx]];
+      if (!it) return;
+      if (!e.canDiscardItem(me)) { this.toast('现在不能整理手牌', 'info'); return; }
+      this.confirmAction({
+        eyebrow: '丢弃道具',
+        title: it.name,
+        sub: it.text,
+        body: '<p class="cardsheet__how">丢掉就没了，好处是手牌空出一格 —— ' +
+          '手牌满的时候绕圈是收不到新牌的。牌堆抽空重洗时，这张会回到牌堆里。</p>',
+        okLabel: '丢掉',
+        onOk: function () { e.discardItem(me, idx); }
+      });
+    },
+
+    /* 不可逆操作的统一确认层：拆房只回半价、抵押要 110% 才能赎回、弃牌少一张。
+       注意「被迫筹款」那条路径（renderRaiseBody）不走这里 —— 那儿的玩家已经在
+       明确地筹钱了，再拦一道只会添堵。 */
+    confirmAction: function (opts) {
+      this.sheet({
+        eyebrow: opts.eyebrow || '确认',
+        title: opts.title,
+        sub: opts.sub,
+        body: opts.body,
+        dismissible: true,
+        actions: [
+          { label: '取消', kind: 'ghost' },
+          { label: opts.okLabel || '确定', kind: opts.okKind || 'danger', onClick: opts.onOk }
+        ]
+      });
     },
 
     /* 点手牌：能出就直接出；要选目标的先要个输入；轮不到你出牌时，点一下当说明看 */
@@ -1200,7 +1281,7 @@ window.DC = window.DC || {};
         '<h3>卡牌与税收</h3><p>机会与命运会带来收益、罚款、位移或入狱。缴纳的罚款会进入免费停车场的奖池，停在停车场即可全部领取。</p>' +
         '<p>' + cardLink('卡牌大全：四副牌组共 45 张的完整牌面与作用', 'rules') + '</p>' +
         '<h3>技能卡</h3><p>独立于机会与命运的一副牌，<strong>不占手牌、也没有出牌时机</strong>：每完成一圈自动抽一张，效果当场结算。整体偏收益（施工补贴、贷款贴息、按圈数分红、免费加盖一栋房屋），也夹着违建拆除、年度审计、稽查传唤这类负项。</p><p>其中「路网分红」按你已完成的圈数计价，上限 ¥1,500；「免费加盖」同样受经典建房规则的约束，若当时没有可加盖的地产，会折算为 ¥500 现金，不会空手。</p><p>不想要这套牌，可以在「设置 → 技能卡」里关掉，绕圈就不再发牌。</p>' +
-        '<h3>道具卡</h3><p>与上面两副牌的关键差别是<strong>进手牌、由你主动打出</strong>：机会 / 命运里能抽到，每绕完一圈也会发一张，手牌上限 3 张。手牌就摆在<strong>棋盘正下方</strong>：固定三个位置，空格显示虚线框，有牌就是一张「上图下字」的小卡片，一直可见，点一下就能出牌。</p><p>出牌时机只有一处 —— <strong>自己的回合、按下「掷骰子」之前</strong>，每回合最多 1 张；轮到你能出牌时，这几张小卡片会亮起来。共 5 张：遥控骰子（指定本次点数）、专线直达（本回合不掷骰，直接前往任意地块并结算）、免租护盾（本回合免付一次他人地产的租金）、双倍收租（本回合自己收租翻倍）、紧急信贷（立即获得 ¥1,500）。免租与双倍收租只在本回合有效，回合结束即失效。</p><p>手牌满了以后再绕圈不会再发牌（不会折算现金，免得「囤牌」反而成了收入）。轮不到你出牌时点一下卡片，会提示这张牌的效果。不想要这套牌，可以在「设置 → 道具卡」里关掉。</p>' +
+        '<h3>道具卡</h3><p>与上面两副牌的关键差别是<strong>进手牌、由你主动打出</strong>：机会 / 命运里能抽到，每绕完一圈也会发一张，手牌上限 3 张。手牌就摆在<strong>棋盘正下方</strong>：固定三个位置，空格显示虚线框，有牌就是一张「上图下字」的小卡片，一直可见，点一下就能出牌。</p><p>出牌时机只有一处 —— <strong>自己的回合、按下「掷骰子」之前</strong>，每回合最多 1 张；轮到你能出牌时，这几张小卡片会亮起来。共 5 张：遥控骰子（指定本次点数）、专线直达（本回合不掷骰，直接前往任意地块并结算）、免租护盾（本回合免付一次他人地产的租金）、双倍收租（从这一刻直到你下次回合开始，别人踩到你的地租金翻倍）、紧急信贷（立即获得 ¥1,500）。免租护盾只活本回合；双倍收租要靠对手来踩才兑现，所以它跨过整轮对手。</p><p>手牌满了以后再绕圈不会再发牌（不会折算现金，免得「囤牌」反而成了收入）。这时可以<strong>长按手牌丢弃</strong>一张用不出去的 —— 比如地图上已经没有可买的地时，「专线直达」就是死牌，一直占着位置。轮不到你出牌时点一下卡片，会提示这张牌的效果。不想要这套牌，可以在「设置 → 道具卡」里关掉。</p>' +
         '<h3>破产</h3><p>现金不足时必须变卖资产；仍无法支付则宣告破产，产业转给债主（或由银行收回）。</p>' +
         '</div>';
       this.sheet({ eyebrow: '规则 · RULES', title: '怎么玩', body: html, actions: [{ label: '知道了', kind: 'primary' }] });
@@ -1225,7 +1306,7 @@ window.DC = window.DC || {};
         {
           name: '道具卡', list: DC.ITEMS,
           how: '每绕完一圈发一张，机会 / 命运里也能抽到。进手牌（上限 ' + C.maxItems +
-            ' 张），自己回合按下「掷骰子」之前才能打出，每回合 1 张。'
+            ' 张），自己回合按下「掷骰子」之前才能打出，每回合 1 张；长按手牌可以丢弃，腾出位置收新牌。'
         }
       ];
       var total = decks.reduce(function (n, d) { return n + d.list.length; }, 0);

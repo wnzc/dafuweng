@@ -1041,13 +1041,62 @@ const group = (name) => { const g = { name, pass: 0, fail: [], notes: [] }; grou
     ok(e.calcRent(DC.CELLS[1]) === single, '增益清掉后应回到原始租金');
   }
 
-  // 非「本回合」的增益不该留下来：runTurn 收尾会清干净
+  // 两条增益的寿命不同：免租只活「自己这一次行动」，双倍收租要活过整轮对手
   {
     const e = mk();
     const p0 = e.player(0);
-    p0.buffs.noRent = 1; p0.buffs.doubleRent = 1; p0.forceDie = 4; p0.teleportTo = 5;
-    e.clearTurnBuffs(p0);
-    ok(p0.buffs.noRent === 0 && p0.buffs.doubleRent === 0, '回合增益未被清空');
+    p0.buffs.noRent = 1; p0.buffs.doubleRent = 1;
+    e.clearShield(p0);
+    ok(p0.buffs.noRent === 0 && p0.buffs.doubleRent === 1, 'clearShield 只该清掉免租');
+    e.clearRentBoost(p0);
+    ok(p0.buffs.doubleRent === 0, 'clearRentBoost 该清掉双倍收租');
+  }
+
+  // 双倍收租真的能兑现：自己出牌后，让别人踩到自己的地才收得到钱。
+  // （早先它跟免租一起在回合末清掉，而自己回合里没人踩你的地 —— 这张牌永远无效）
+  {
+    const e = mk();
+    const p0 = e.player(0), p1 = e.player(1);
+    grant(e, p0, [1]);
+    e.state.houses[1] = 5;                       // 酒店，租金 2,500
+    const base = e.calcRent(DC.CELLS[1]);
+    ready(e);
+    p0.items = ['double'];
+    ok(e.useItem(p0, 0).ok === true, '双倍收租应能用');
+    ok(e.calcRent(DC.CELLS[1]) === base * 2, '出牌后本回合内租金就该翻倍');
+
+    p1.pos = 1;                                  // 换成对手踩上来
+    const before = p1.cash;
+    await e.resolveLanding(p1, e._loopId, 0);
+    ok(before - p1.cash === base * 2,
+      `对手应被收双倍租金 ${base * 2}，实付 ${before - p1.cash}`);
+
+    e.clearRentBoost(p0);                        // 下次自己回合开始
+    ok(e.calcRent(DC.CELLS[1]) === base, '下一次自己回合开始后翻倍应失效');
+  }
+
+  // 弃牌：腾位置用，不换钱，也不占每回合的出牌额度
+  {
+    const e = mk();
+    const p0 = e.player(0);
+    p0.items = ['line', 'loan'];
+    ok(e.discardItem(p0, 0) === false, '还没进入等待掷骰时不该能丢牌');
+    ready(e);
+    ok(e.discardItem(p0, 0) === true, '等待掷骰时应该能丢牌');
+    ok(p0.items.length === 1 && p0.items[0] === 'loan', '丢掉的应该是指定的那张');
+    ok((e.state.itemsUsedTurn || 0) === 0, '弃牌不该占用每回合的出牌额度');
+    ok(e.useItem(p0, 0).ok === true, '丢完牌仍然出得出去');
+  }
+
+  // AI 手牌满了、又没有值得出的牌时，会丢掉当前用不出去的（否则会把后续发牌堵死）
+  {
+    const e = mk();
+    const ai = e.player(1);
+    DC.CELLS.forEach(function (c, i) { if (c.price) e.state.owners[i] = 0; });   // 全图都有主
+    ai.items = ['line', 'line', 'line'];
+    ok(e.aiJunkItem(ai) === 0, '地图上没有可买的地时，专线直达应被判为死牌');
+    ok(e.discardItem(ai, 0) === true, 'AI 没有等待掷骰的窗口，也该能丢牌');
+    ok(ai.items.length === 2, '丢掉一张之后手牌应剩 2 张');
   }
 
   // 存档：手牌、牌堆、指针都要带上；缺字段的老档恢复时补齐

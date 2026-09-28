@@ -1108,6 +1108,30 @@ window.DC = window.DC || {};
       return (this.state.itemsUsedTurn || 0) < C.maxItemsPerTurn;
     },
 
+    /* 整理手牌的窗口：与出牌同一个（自己回合、按下掷骰子之前），
+       但**不占**每回合的出牌额度 —— 弃牌没有收益，不需要限额。 */
+    canDiscardItem: function (p) {
+      if (this.settings.itemCards === false) return false;
+      if (!p || p.bankrupt || !this.state || this.state.over) return false;
+      if (!Array.isArray(p.items) || !p.items.length) return false;
+      if (p.isAI) return true;                 // AI 在回合开始时整理
+      return !!this.state.awaitingRoll;        // 人类在等待掷骰的窗口里整理
+    },
+
+    /* 丢掉一张手牌，不换钱 —— 纯粹为了腾位置。手牌上限 3，满了就不再发新牌，
+       而「专线直达」这类牌在地图没有可买的地之后就是死牌，会一直堵在手牌里。
+       丢弃不需要特殊记账：牌堆抽空时会整副重洗，它自己会回到牌堆去。 */
+    discardItem: function (p, idx) {
+      if (!this.canDiscardItem(p)) return false;
+      var item = DC.ITEM_BY_ID[p.items[idx]];
+      if (!item) return false;
+      p.items.splice(idx, 1);
+      this.log(p.name + ' 丢弃道具「' + item.name + '」', 'item');
+      this.emit('state');
+      DC.Store.save(this.state);
+      return true;
+    },
+
     /* 发一张道具进手牌。
        fallback = true（机会 / 命运抽到的那一类）时，手牌满了折算现金，
        免得抽到一张「什么也没发生」的空牌；
@@ -1210,10 +1234,16 @@ window.DC = window.DC || {};
       }
     },
 
-    /* 本回合增益（免租 / 双倍收租）只活一个回合，回合收尾时统一清掉 */
-    clearTurnBuffs: function (p) {
-      if (!p) return;
-      p.buffs = { noRent: 0, doubleRent: 0 };
+    /* 免租护盾只活「自己这一次行动」：自己不会踩自己的地，回合结束它就没意义了 */
+    clearShield: function (p) {
+      if (p) p.buffs.noRent = 0;
+    },
+
+    /* 双倍收租要等别人踩到你的地才兑现，所以它得活过整轮对手 ——
+       在自己下一次回合开始时才清。早先它跟免租一起在回合末清掉，
+       结果这张牌永远不可能生效（自己回合里根本没人踩你的地）。 */
+    clearRentBoost: function (p) {
+      if (p) p.buffs.doubleRent = 0;
     },
 
     /* ---------- AI 出牌 ----------
@@ -1225,20 +1255,32 @@ window.DC = window.DC || {};
       if (!Array.isArray(p.items) || !p.items.length) return;
       if ((this.state.itemsUsedTurn || 0) >= C.maxItemsPerTurn) return;
       var pick = this.aiPickItem(p);
-      if (!pick) return;
-      await this.delay(420);
-      this.useItem(p, pick.idx, pick.target);
+      if (pick) {
+        await this.delay(420);
+        this.useItem(p, pick.idx, pick.target);
+        return;
+      }
+      // 没有值得出的牌、手牌却是满的：丢掉一张用不出去的，别把后面的发牌堵死
+      if (p.items.length >= C.maxItems) {
+        var junk = this.aiJunkItem(p);
+        if (junk >= 0) {
+          await this.delay(220);
+          this.discardItem(p, junk);
+        }
+      }
     },
 
     aiPickItem: function (p) {
       var idxOf = function (id) { return p.items.indexOf(id); };
       var i;
 
+      // 现金见底先补钱（原阈值 2,000 太严，中后期几乎不触发）
       i = idxOf('loan');
-      if (i >= 0 && p.cash < 2000) return { idx: i };
+      if (i >= 0 && p.cash < 3500) return { idx: i };
 
+      // 双倍收租现在能跨过对手那一轮兑现（见 clearRentBoost 的注释），门槛可以降下来
       i = idxOf('double');
-      if (i >= 0 && p.props.length >= 2 && p.cash >= 3000) return { idx: i };
+      if (i >= 0 && p.props.length >= 2 && p.cash >= 2000) return { idx: i };
 
       i = idxOf('die');
       if (i >= 0) {
@@ -1253,9 +1295,26 @@ window.DC = window.DC || {};
       }
 
       i = idxOf('shield');
-      if (i >= 0 && p.cash < 6000 && this.aiRentRisk(p)) return { idx: i };
+      if (i >= 0 && this.aiRentRisk(p) && p.cash < 9000) return { idx: i };
 
       return null;
+    },
+
+    /* 手牌满了又没有值得出的牌时，挑一张**当前用不出去**的丢掉。
+       只丢判据明确的三种：地图上没有买得起的无主地 → 专线直达是死牌；
+       场上没有未抵押的他人地产 → 免租护盾是死牌；自己一处产业都没有 → 双倍收租是死牌。
+       （前两个判据就是它自己的出牌条件，所以不会把「留着更有用」的牌丢掉。）
+       遥控骰子与紧急信贷永远有用途，不动。 */
+    aiJunkItem: function (p) {
+      var idxOf = function (id) { return p.items.indexOf(id); };
+      var i;
+      i = idxOf('line');
+      if (i >= 0 && this.aiTeleportSpot(p) == null) return i;
+      i = idxOf('shield');
+      if (i >= 0 && !this.aiRentRisk(p)) return i;
+      i = idxOf('double');
+      if (i >= 0 && !p.props.length) return i;
+      return -1;
     },
 
     /* 1–6 逐点试探落格价值，明显划算才用牌，否则留着 */
@@ -1392,13 +1451,14 @@ window.DC = window.DC || {};
   Engine.prototype.runTurn = async function (p, id) {
     if (p.isAI && !p.inJail) { await this.aiTurnUpkeep(p); }
     this.state.itemsUsedTurn = 0;
-    this.clearTurnBuffs(p);
+    // 免租只活一次行动；双倍收租要活过整轮对手，所以到「自己下次回合开头」才失效
+    this.clearShield(p);
+    this.clearRentBoost(p);
     if (p.isAI && !p.inJail && !p.bankrupt && !this.state.over) await this.aiUseItems(p);
     try {
       return await _runTurn.call(this, p, id);
     } finally {
-      // 免租 / 双倍收租都是「本回合」限定，回合一结束就失效
-      this.clearTurnBuffs(p);
+      this.clearShield(p);     // 本回合没被踩到的话，护盾就到此为止
       p.forceDie = 0;
       p.teleportTo = null;
       this.emit('state');
