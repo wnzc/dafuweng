@@ -21,9 +21,10 @@ window.DC = window.DC || {};
         var snap = JSON.parse(JSON.stringify({
           v: C.version, players: state.players, current: state.current, round: state.round,
           die: state.die, owners: state.owners, houses: state.houses, mortgaged: state.mortgaged,
-          pot: state.pot, log: state.log.slice(-40), chance: state.chance, chanceIdx: state.chanceIdx,
+          pot: state.pot, log: state.log.slice(-40),           chance: state.chance, chanceIdx: state.chanceIdx,
           fate: state.fate, fateIdx: state.fateIdx,
-          skill: state.skill, skillIdx: state.skillIdx, over: state.over
+          skill: state.skill, skillIdx: state.skillIdx,
+          itemsDeck: state.itemsDeck, itemsIdx: state.itemsIdx, over: state.over
         }));
         localStorage.setItem(SAVE_KEY, JSON.stringify(snap));
         return true;
@@ -57,6 +58,9 @@ window.DC = window.DC || {};
       // 技能卡：独立卡组，每绕完一圈抽一张、效果当场结算（不占手牌、无出牌时机）。
       // 关掉则完全回到「只有机会 / 命运」的旧规则，绕圈也不再发牌。
       skillCards: true,
+      // 道具卡：进手牌（上限 3 张）、每回合最多出 1 张，出牌窗口是「自己回合、掷骰前」。
+      // 关掉则机会 / 命运不再发道具，绕圈也不再发，操作坞的道具入口同步隐藏。
+      itemCards: true,
       // 默认不跟随系统「减少动画」，避免游戏动效被系统设置整锅关掉；
       // 仍可在设置里手动打开。
       reducedMotion: false
@@ -112,7 +116,9 @@ window.DC = window.DC || {};
         return {
           id: i, name: p.name, short: p.short, color: p.color, isAI: p.isAI,
           cash: C.startCash, pos: 0, inJail: false, jailTurns: 0, jailCards: 0,
-          bankrupt: false, props: [], laps: 0, skillLaps: 0
+          bankrupt: false, props: [], laps: 0, skillLaps: 0,
+          items: [], itemLaps: 0, forceDie: 0, teleportTo: null,
+          buffs: { noRent: 0, doubleRent: 0 }
         };
       });
       this._loopId++;
@@ -124,6 +130,7 @@ window.DC = window.DC || {};
         chance: U.shuffle(DC.CHANCE), chanceIdx: 0,
         fate: U.shuffle(DC.FATE), fateIdx: 0,
         skill: U.shuffle(DC.SKILL), skillIdx: 0,
+        itemsDeck: U.shuffle(DC.ITEMS), itemsIdx: 0, itemsUsedTurn: 0,
         ask: null, over: false, ranking: null, awaitingRoll: false,
         justJailed: false, busy: false, lastDeed: null
       };
@@ -137,13 +144,22 @@ window.DC = window.DC || {};
       this._rollResolve = null;
       this._askResolve = null;
       this.state = Object.assign({
-        ask: null, awaitingRoll: false, justJailed: false, busy: false, ranking: null, lastDeed: null
+        ask: null, awaitingRoll: false, justJailed: false, busy: false, ranking: null, lastDeed: null,
+        itemsUsedTurn: 0
       }, snap);
       this.state.log = snap.log || [];
+      var ITEMS = DC.ITEM_BY_ID || {};
       this.state.players.forEach(function (p) {
         p.props = p.props || [];
         // 技能卡出现之前的存档没有这个字段：按当前圈数补齐，不补发历史圈数
         if (typeof p.skillLaps !== 'number') p.skillLaps = p.laps || 0;
+        // 道具卡同理：老档补齐手牌容器与计数器，不补发历史圈数
+        if (!Array.isArray(p.items)) p.items = [];
+        else p.items = p.items.filter(function (id) { return !!ITEMS[id]; });
+        if (typeof p.itemLaps !== 'number') p.itemLaps = p.laps || 0;
+        if (typeof p.forceDie !== 'number') p.forceDie = 0;
+        if (p.teleportTo === undefined) p.teleportTo = null;
+        p.buffs = Object.assign({ noRent: 0, doubleRent: 0 }, p.buffs || {});
       });
       // 牌堆缺失（老档）或为空时重洗一副，避免抽卡时读到 undefined
       if (!Array.isArray(this.state.skill) || !this.state.skill.length) {
@@ -151,6 +167,12 @@ window.DC = window.DC || {};
         this.state.skillIdx = 0;
       }
       if (typeof this.state.skillIdx !== 'number') this.state.skillIdx = 0;
+      if (!Array.isArray(this.state.itemsDeck) || !this.state.itemsDeck.length) {
+        this.state.itemsDeck = U.shuffle(DC.ITEMS);
+        this.state.itemsIdx = 0;
+      }
+      if (typeof this.state.itemsIdx !== 'number') this.state.itemsIdx = 0;
+      if (typeof this.state.itemsUsedTurn !== 'number') this.state.itemsUsedTurn = 0;
       this.log('已恢复上次对局', 'info');
       this.emit('state');
       return this.state;
@@ -174,7 +196,11 @@ window.DC = window.DC || {};
           while (again && !this.state.over && id === this._loopId && guard++ < 12) {
             again = await this.runTurn(p, id);
           }
-          if (!this.state.over && id === this._loopId) await this.settleSkillCard(p, id);
+          // 技能卡当场结算；道具卡只入手（绕圈发牌这一条的开关在各自的方法里）
+          if (!this.state.over && id === this._loopId) {
+            await this.settleSkillCard(p, id);
+            if (!this.state.over && id === this._loopId) await this.settleItemCard(p, id);
+          }
         }
         if (this.state.over || id !== this._loopId) break;
         this.advance();
@@ -223,7 +249,24 @@ window.DC = window.DC || {};
       }
       if (id !== this._loopId || p.bankrupt) return false;
 
-      die = U.rand(1, 6);
+      // 道具「专线直达」：本回合不掷骰，直接前往目标格并结算。
+      // 人类是在等掷骰的窗口里出牌（useItem 会顺手 pressRoll 唤醒这一段），
+      // AI 则在回合开始时出牌（见文件末尾的 runTurn 包装器），两条路径都落到这里。
+      if (p.teleportTo != null) {
+        var dest = p.teleportTo;
+        p.teleportTo = null;
+        this.log(p.name + ' 使用专线直达，前往 ' + CELLS[dest].name, 'item');
+        this.sfx('step');
+        this.buzz(14);
+        await this.moveToCell(p, dest, {});
+        if (id !== this._loopId) return false;
+        await this.resolveLanding(p, id, 0);
+        return false;
+      }
+
+      // 道具「遥控骰子」：预设的点数优先于随机数，用掉即清零
+      die = p.forceDie || U.rand(1, 6);
+      p.forceDie = 0;
       this.setDie(die);
       this.sfx('dice');
       this.buzz(12);
@@ -355,6 +398,17 @@ window.DC = window.DC || {};
       var owner = this.player(ownerId);
       if (!owner) return;
       if (this.state.mortgaged[cell.i]) { this.log(cell.name + ' 已抵押，本次免租', 'info'); return; }
+      // 道具「免租护盾」：本回合免付一次他人地产的租金。
+      // 抵押地本来就免租，所以不消耗护盾（判断放在抵押之后）。
+      if (p.buffs && p.buffs.noRent > 0) {
+        p.buffs.noRent--;
+        this.log(p.name + ' 使用免租护盾，免付 ' + owner.name + ' 的 ' + cell.name + ' 租金', 'item');
+        this.sfx('card');
+        this.buzz(14);
+        if (this.ui.float) this.ui.float('免租', cell.i, 'gain');
+        this.emit('state');
+        return;
+      }
       var rent = this.calcRent(cell);
       this.log(p.name + ' 踩到 ' + owner.name + ' 的 ' + cell.name + '，付租 ' + money(rent), 'rent');
       this.sfx('rent');
@@ -368,6 +422,14 @@ window.DC = window.DC || {};
       var ownerId = this.state.owners[cell.i];
       var p = this.player(ownerId);
       if (!p) return 0;
+      var rent = this.baseRent(cell, p);
+      // 道具「双倍收租」：本回合内该业主收到的租金翻倍（回合末清空，见 runTurn 包装器）
+      if (p.buffs && p.buffs.doubleRent > 0) rent *= 2;
+      return rent;
+    },
+
+    /* 不含道具加成的原始租金 */
+    baseRent: function (cell, p) {
       var houses = this.state.houses[cell.i] || 0;
       if (cell.type === 'rail') {
         var n = this.countType(p, 'rail');
@@ -963,6 +1025,10 @@ window.DC = window.DC || {};
           this.log(p.name + ' 获得一张出狱许可证', 'card');
           this.emit('state');
           break;
+        /* 机会 / 命运发到的一张道具卡：只入手，不立即结算 */
+        case 'item':
+          this.grantItem(p, { fallback: true });
+          break;
         /* 技能卡：按已完成圈数分红，带封顶，避免后期滚雪球 */
         case 'lapBonus': {
           var laps = Math.max(p.laps || 0, 1);
@@ -1013,6 +1079,223 @@ window.DC = window.DC || {};
         default:
           break;
       }
+    },
+
+    /* ---------- 道具卡 ----------
+       与技能卡的关键差别：道具**进手牌**，由玩家在「自己回合、掷骰前」主动打出。
+       发放走 grantItem（机会 / 命运抽到 + 每绕一圈），出牌走 useItem。
+
+       出牌是「旁路」操作：人类按下时引擎正挂在 await waitRoll() 上，
+       useItem 同步改状态即可（跟 pressRoll 是同一性质的操作），
+       绝不能塞进 ask 通道 —— _askResolve 是单通道，抢了会和买地 / 升级 / 监狱弹窗互相打架。 */
+
+    /* 现在能不能出牌：本人回合、还没掷骰、本回合没出过、开关开着 */
+    canUseItem: function (p) {
+      if (this.settings.itemCards === false) return false;
+      if (!p || p.isAI || p.bankrupt || !this.state || this.state.over) return false;
+      if (!Array.isArray(p.items) || !p.items.length) return false;
+      if (!this.state.awaitingRoll) return false;
+      if ((this.state.itemsUsedTurn || 0) >= C.maxItemsPerTurn) return false;
+      return true;
+    },
+
+    /* 发一张道具进手牌。
+       fallback = true（机会 / 命运抽到的那一类）时，手牌满了折算现金，
+       免得抽到一张「什么也没发生」的空牌；
+       绕圈发牌不带 fallback —— 那条路每圈都会走，折算现金等于让「不出牌」变成稳定收入。 */
+    grantItem: function (p, opts) {
+      opts = opts || {};
+      if (!p || p.bankrupt) return null;
+      if (!Array.isArray(p.items)) p.items = [];
+      if (p.items.length >= C.maxItems) {
+        if (opts.fallback) {
+          p.cash += C.itemFallback;
+          this.log(p.name + ' 手牌已满，道具折算为 ' + money(C.itemFallback), 'item');
+          this.sfx('coin');
+          if (this.ui.float) this.ui.float('+' + money(C.itemFallback), p.pos, 'gain');
+          this.emit('state');
+        } else {
+          this.log(p.name + ' 手牌已满（上限 ' + C.maxItems + ' 张），这次道具没能收下', 'item');
+        }
+        return null;
+      }
+      if (!Array.isArray(this.state.itemsDeck) || !this.state.itemsDeck.length) {
+        this.state.itemsDeck = U.shuffle(DC.ITEMS);
+        this.state.itemsIdx = 0;
+      }
+      if (this.state.itemsIdx >= this.state.itemsDeck.length) {
+        this.state.itemsDeck = U.shuffle(this.state.itemsDeck);
+        this.state.itemsIdx = 0;
+      }
+      var item = this.state.itemsDeck[this.state.itemsIdx++];
+      p.items.push(item.id);
+      this.log(p.name + ' 获得道具「' + item.name + '」（' + item.text + '）', 'item');
+      this.sfx('card');
+      this.buzz(12);
+      if (this.ui.float) this.ui.float(item.name, p.pos, 'gain');
+      this.emit('state');
+      return item;
+    },
+
+    /* 出一张手牌。返回 { ok, reason }，UI 用 reason 直接提示玩家 */
+    useItem: function (p, idx, target) {
+      if (!this.canUseItem(p)) return { ok: false, reason: '现在不是出牌时机' };
+      var item = DC.ITEM_BY_ID[p.items[idx]];
+      if (!item) return { ok: false, reason: '这张道具不存在' };
+      var res = this.applyItem(p, item, target);
+      if (!res.ok) return res;                    // 校验没过：不消耗手牌
+      p.items.splice(idx, 1);
+      this.state.itemsUsedTurn = (this.state.itemsUsedTurn || 0) + 1;
+      this.log(p.name + ' 使用道具「' + item.name + '」', 'item');
+      this.sfx('card');
+      this.buzz(16);
+      this.emit('state');
+      // 存档点在「进入等待掷骰」那一刻，出牌发生在它之后，这里补一次
+      DC.Store.save(this.state);
+      // 「专线直达」会替代本次掷骰：顺手唤醒 waitRoll，让回合流程继续往下走
+      if (res.pushRoll && this.state.awaitingRoll && this._rollResolve) this.pressRoll();
+      return { ok: true };
+    },
+
+    /* 道具效果本身。target 的含义随 kind 变化；校验不过就原样退回 */
+    applyItem: function (p, item, target) {
+      switch (item.kind) {
+        case 'forceDie':
+          if (!(target >= 1 && target <= 6)) return { ok: false, reason: '请选择 1–6 的点数' };
+          p.forceDie = target;
+          return { ok: true };
+        case 'teleport':
+          if (target == null || target < 0 || target >= CELLS.length) return { ok: false, reason: '请选择目的地' };
+          if (target === p.pos) return { ok: false, reason: '已经站在这个格子上了' };
+          p.teleportTo = target;
+          return { ok: true, pushRoll: true };
+        case 'noRent':
+          p.buffs.noRent = (p.buffs.noRent || 0) + 1;
+          return { ok: true };
+        case 'doubleRent':
+          p.buffs.doubleRent = (p.buffs.doubleRent || 0) + 1;
+          return { ok: true };
+        case 'gain':
+          p.cash += item.amount;
+          this.sfx('coin');
+          if (this.ui.float) this.ui.float('+' + money(item.amount), p.pos, 'gain');
+          if (this.ui.coinFly) this.ui.coinFly(p.pos, p.id);
+          return { ok: true };
+        default:
+          return { ok: false, reason: '这张道具还不能使用' };
+      }
+    },
+
+    /* 绕完一圈发一张道具（与 settleSkillCard 对称，但只入手、不立即结算） */
+    async settleItemCard(p, id) {
+      if (!p || p.bankrupt || this.state.over) return;
+      if (this.settings.itemCards === false) {
+        p.itemLaps = p.laps || 0;      // 关着的时候跟着圈数走，重新打开不会补发
+        return;
+      }
+      var guard = 0;
+      while ((p.itemLaps || 0) < (p.laps || 0) && guard++ < 3) {
+        p.itemLaps = (p.itemLaps || 0) + 1;
+        this.grantItem(p);
+        if (id !== this._loopId || this.state.over || p.bankrupt) return;
+      }
+    },
+
+    /* 本回合增益（免租 / 双倍收租）只活一个回合，回合收尾时统一清掉 */
+    clearTurnBuffs: function (p) {
+      if (!p) return;
+      p.buffs = { noRent: 0, doubleRent: 0 };
+    },
+
+    /* ---------- AI 出牌 ----------
+       每个自己回合掷骰前只考虑一次：现金见底先补钱、有多处产业才谈双倍收租，
+       然后才是「遥控骰子 / 专线直达」这类要算落点的牌，最后才是免租护盾。
+       刻意用确定性启发式、不掷随机数，免得打乱 smoke 的同种子复现。 */
+    async aiUseItems(p) {
+      if (this.settings.itemCards === false) return;
+      if (!Array.isArray(p.items) || !p.items.length) return;
+      if ((this.state.itemsUsedTurn || 0) >= C.maxItemsPerTurn) return;
+      var pick = this.aiPickItem(p);
+      if (!pick) return;
+      await this.delay(420);
+      this.useItem(p, pick.idx, pick.target);
+    },
+
+    aiPickItem: function (p) {
+      var idxOf = function (id) { return p.items.indexOf(id); };
+      var i;
+
+      i = idxOf('loan');
+      if (i >= 0 && p.cash < 2000) return { idx: i };
+
+      i = idxOf('double');
+      if (i >= 0 && p.props.length >= 2 && p.cash >= 3000) return { idx: i };
+
+      i = idxOf('die');
+      if (i >= 0) {
+        var die = this.aiBestDie(p);
+        if (die) return { idx: i, target: die };
+      }
+
+      i = idxOf('line');
+      if (i >= 0) {
+        var spot = this.aiTeleportSpot(p);
+        if (spot != null) return { idx: i, target: spot };
+      }
+
+      i = idxOf('shield');
+      if (i >= 0 && p.cash < 6000 && this.aiRentRisk(p)) return { idx: i };
+
+      return null;
+    },
+
+    /* 1–6 逐点试探落格价值，明显划算才用牌，否则留着 */
+    aiBestDie: function (p) {
+      var best = null, bestScore = 0;
+      for (var n = 1; n <= 6; n++) {
+        var score = this.cellScore(p, (p.pos + n) % 24);
+        if (best === null || score > bestScore) { best = n; bestScore = score; }
+      }
+      return bestScore > 0.5 ? best : null;
+    },
+
+    /* 一块格子对 p 的价值：无主好地 > 自己的地 > 停车场 > 别人的地 > 税 / 入狱 */
+    cellScore: function (p, i) {
+      var c = CELLS[i];
+      var ownerId = this.state.owners[i];
+      if (c.type === 'gotojail' || c.type === 'jail') return -3;
+      if (c.type === 'tax') return -2;
+      if (c.type === 'parking') return (this.state.pot || 0) / 1000;
+      if (c.type === 'chance' || c.type === 'fate') return 0.3;
+      if (c.type === 'go') return 0.4;
+      if (ownerId === undefined || ownerId === null) {
+        if (c.price && p.cash >= c.price) return c.price / 2000;
+        return 0.1;
+      }
+      if (ownerId === p.id) return this.canUpgradeLevel(p, i) ? 0.8 : 0.2;
+      if (this.state.mortgaged[i]) return 0;
+      return -this.baseRent(c, this.player(ownerId)) / 2000;
+    },
+
+    /* 专线直达的目的地：买得起的最贵无主地 */
+    aiTeleportSpot: function (p) {
+      var best = null, bestPrice = 0;
+      for (var i = 0; i < CELLS.length; i++) {
+        var c = CELLS[i];
+        if (!c.price || i === p.pos) continue;
+        if (this.state.owners[i] !== undefined && this.state.owners[i] !== null) continue;
+        if (!this.aiWantsToBuy(p, c)) continue;
+        if (c.price > bestPrice) { bestPrice = c.price; best = i; }
+      }
+      return best;
+    },
+
+    aiRentRisk: function (p) {
+      var self = this;
+      return this.state.players.some(function (o) {
+        if (o === p || o.bankrupt) return false;
+        return o.props.some(function (i) { return !self.state.mortgaged[i]; });
+      });
     },
 
     nearestOfType: function (p, type) {
@@ -1092,11 +1375,25 @@ window.DC = window.DC || {};
     }
   };
 
-  /* 回合开始：只做赎回，不再自动升级 */
+  /* 回合开始：赎回 + 道具卡的回合重置与收尾。
+     出牌窗口只落在「自己回合、掷骰前」：人类等 awaitingRoll 之后由 UI 触发 useItem，
+     AI 在这里直接决定。两者都把 forceDie / teleportTo 写在玩家身上，
+     再由 _runTurn 按需消费 —— 所以移动与落格结算仍然全部走正规回合流程。 */
   var _runTurn = Engine.prototype.runTurn;
   Engine.prototype.runTurn = async function (p, id) {
     if (p.isAI && !p.inJail) { await this.aiTurnUpkeep(p); }
-    return _runTurn.call(this, p, id);
+    this.state.itemsUsedTurn = 0;
+    this.clearTurnBuffs(p);
+    if (p.isAI && !p.inJail && !p.bankrupt && !this.state.over) await this.aiUseItems(p);
+    try {
+      return await _runTurn.call(this, p, id);
+    } finally {
+      // 免租 / 双倍收租都是「本回合」限定，回合一结束就失效
+      this.clearTurnBuffs(p);
+      p.forceDie = 0;
+      p.teleportTo = null;
+      this.emit('state');
+    }
   };
 
   DC.Engine = Engine;

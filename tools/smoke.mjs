@@ -35,6 +35,8 @@ const SEED0 = +arg('seed', 1);
 const VERBOSE = argv.includes('--verbose');
 // 技能卡默认开启；--skills=0 关掉后跑一遍，可对比对局长度变化
 const SKILLS = arg('skills', '1') !== '0';
+// 道具卡同理：--items=0 关掉再跑一遍
+const ITEMS = arg('items', '1') !== '0';
 
 /* ---------------- 种子随机 ---------------- */
 function mulberry32(seed) {
@@ -85,7 +87,8 @@ function makeEngine(DC, { humanPolicy, onState, settings }) {
   const stats = { asks: 0, byType: {} };
   const cov = {};                      // 路径覆盖：证明这些规则分支真被跑到了
 
-  ['runAuction', 'drawCard', 'settleSkillCard', 'declareBankrupt', 'sendToJail', 'buyHouse', 'sellHouse',
+  ['runAuction', 'drawCard', 'settleSkillCard', 'settleItemCard', 'grantItem', 'useItem',
+    'declareBankrupt', 'sendToJail', 'buyHouse', 'sellHouse',
     'mortgage', 'unmortgage', 'buy'].forEach((name) => {
     const orig = eng[name];
     eng[name] = function () { cov[name] = (cov[name] || 0) + 1; return orig.apply(this, arguments); };
@@ -292,14 +295,14 @@ function makeChecker(world) {
 }
 
 /* ---------------- 跑一局 ---------------- */
-async function playGame(seed, policyName, checker, world, rounds, classic = true, skills = true) {
+async function playGame(seed, policyName, checker, world, rounds, classic = true, skills = true, items = true) {
   const { DC } = world;
   const policy = POLICIES[policyName];
   const fails = [];
 
   const { eng, stats, cov } = makeEngine(DC, {
     humanPolicy: (a, e) => policy(a, e),
-    settings: { classicRules: classic, skillCards: skills },
+    settings: { classicRules: classic, skillCards: skills, itemCards: items },
     onState: (e) => {
       if (e.state.__capped) return;
       checker(e, `第 ${e.state.round} 回合`, (m) => fails.push(m));
@@ -319,7 +322,7 @@ async function playGame(seed, policyName, checker, world, rounds, classic = true
   const s = eng.state;
 
   return {
-    seed, policy: policyName, over: s.over, capped: !!s.__capped, classic, skills,
+    seed, policy: policyName, over: s.over, capped: !!s.__capped, classic, skills, items,
     round: s.round, asks: stats.asks, byType: stats.byType,
     alive: s.players.filter((p) => !p.bankrupt).length,
     winner: (s.over && !s.__capped && s.ranking) ? s.players[s.ranking[0]].name : null,
@@ -329,6 +332,8 @@ async function playGame(seed, policyName, checker, world, rounds, classic = true
     houses: Object.values(s.houses).reduce((a, b) => a + b, 0),
     // 真正抽到的技能卡张数：skillLaps 就是发牌计数（跟 cov 的调用次数不是一回事）
     skillDrawn: s.players.reduce((a, p) => a + (p.skillLaps || 0), 0),
+    // 道具卡同理：itemLaps 是绕圈发牌计数，另有机会 / 命运抽到的那部分（看 cov.grantItem）
+    itemDrawn: s.players.reduce((a, p) => a + (p.itemLaps || 0), 0),
     _fails: fails
   };
 }
@@ -843,6 +848,228 @@ const group = (name) => { const g = { name, pass: 0, fail: [], notes: [] }; grou
 }
 
 /* ============================================================
+   A3. 道具卡（进手牌 · 自己回合掷骰前出牌 · 每回合 1 张）
+   ============================================================ */
+{
+  const g = group('道具卡');
+  const world = createWorld(11);
+  const { DC } = world;
+  // 随机对局里人类不出牌（等于「囤牌不出的玩家」），出牌分支由 AI 与这里的单元用例覆盖
+  const mk = (settings) => {
+    const { eng } = makeEngine(DC, { humanPolicy: POLICIES.normal, settings });
+    eng.newGame(4);
+    return eng;
+  };
+  const ok = (cond, msg) => { if (cond) g.pass++; else g.fail.push(msg); };
+  const grant = (e, p, cells) => cells.forEach((i) => {
+    e.state.owners[i] = p.id;
+    if (p.props.indexOf(i) < 0) p.props.push(i);
+  });
+  const ready = (e) => { e.state.awaitingRoll = true; };   // 人类的出牌窗口就在这里
+
+  // 卡组本身：id 唯一、文案齐全、kind 都在 applyItem 的认识范围内
+  {
+    const ids = DC.ITEMS.map((c) => c.id);
+    ok(DC.ITEMS.length >= 5, `道具卡组太薄（${DC.ITEMS.length} 张）`);
+    ok(new Set(ids).size === ids.length, '道具卡 id 有重复');
+    const KNOWN = ['forceDie', 'teleport', 'noRent', 'doubleRent', 'gain'];
+    const bad = DC.ITEMS.filter((c) =>
+      !c.id || !c.name || !c.text || !c.icon || KNOWN.indexOf(c.kind) < 0 ||
+      (c.kind === 'gain' && !(c.amount > 0)) ||
+      DC.ITEM_BY_ID[c.id] !== c);
+    ok(bad.length === 0, `道具卡定义有问题：${bad.map((c) => c.name || c.id).join('、')}`);
+    // 卡片上半部分那张图得在 index.html 的 sprite 里真的存在，否则线上是一块空白
+    const pageHtml = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
+    const noIcon = DC.ITEMS.filter((c) => pageHtml.indexOf('id="' + c.icon + '"') < 0);
+    ok(noIcon.length === 0, `道具图标不在 index.html 的 sprite 里：${noIcon.map((c) => c.icon).join('、')}`);
+  }
+
+  // 机会 / 命运里确实能抽出「道具」这一类结果
+  {
+    const inChance = DC.CHANCE.filter((c) => c.kind === 'item').length;
+    const inFate = DC.FATE.filter((c) => c.kind === 'item').length;
+    ok(inChance > 0 && inFate > 0, `机会 / 命运里没有发道具的牌（${inChance} / ${inFate}）`);
+  }
+
+  // 「卡牌大全」那张表格的右列由 ui.js 的 cardNote 按 kind 现算，漏一个就是空格子
+  {
+    const uiSrc = fs.readFileSync(path.join(ROOT, 'js', 'ui.js'), 'utf8');
+    const noteSrc = (uiSrc.match(/function cardNote\(c\) \{[\s\S]*?\n  \}/) || [''])[0];
+    const kinds = {};
+    DC.CHANCE.concat(DC.FATE, DC.SKILL, DC.ITEMS).forEach((c) => { kinds[c.kind] = true; });
+    const missing = Object.keys(kinds).filter((k) => noteSrc.indexOf("case '" + k + "'") < 0);
+    ok(missing.length === 0, `卡牌大全缺说明的 kind：${missing.join('、')}`);
+  }
+
+  // 抽到「获得道具」的牌 → 收进手牌，不当场结算
+  {
+    const e = mk();
+    const p0 = e.player(0);
+    p0.items = [];
+    await e.applyCard(p0, { text: '测试道具', kind: 'item' }, 0);
+    ok(p0.items.length === 1, `抽到道具牌应收进手牌，实为 ${p0.items.length} 张`);
+    ok(!!DC.ITEM_BY_ID[p0.items[0]], '收进手牌的 id 不在道具表里');
+  }
+
+  // 手牌上限：抽到道具牌时满了折算现金；绕圈发牌时满了不折算（否则囤牌就成了收入）
+  {
+    const e = mk();
+    const p0 = e.player(0);
+    p0.items = ['loan', 'loan', 'loan'];
+    const cash = p0.cash;
+    await e.applyCard(p0, { text: '测试道具', kind: 'item' }, 0);
+    ok(p0.cash === cash + DC.CONFIG.itemFallback,
+      `手牌满时抽出道具应折算 ${DC.CONFIG.itemFallback}，实得 ${p0.cash - cash}`);
+
+    const e2 = mk();
+    const q = e2.player(0);
+    q.items = ['loan', 'loan', 'loan'];
+    q.laps = 1; q.itemLaps = 0;
+    const cash2 = q.cash;
+    await e2.settleItemCard(q, e2._loopId);
+    ok(q.cash === cash2, '绕圈发牌时手牌满不应折算现金');
+    ok(q.items.length === DC.CONFIG.maxItems, '手牌不应超过上限');
+    ok(q.itemLaps === 1, '手牌满也要推进 itemLaps，否则会一直重试同一圈');
+  }
+
+  // 绕完一圈发一张、同一圈不重复；开关关掉就不发
+  {
+    const e = mk();
+    const p0 = e.player(0);
+    p0.laps = 1;
+    await e.settleItemCard(p0, e._loopId);
+    const afterFirst = e.state.itemsIdx;
+    ok(afterFirst > 0, '绕完一圈应发一张道具');
+    await e.settleItemCard(p0, e._loopId);
+    ok(e.state.itemsIdx === afterFirst, '同一圈被重复发了道具');
+    p0.laps = 2;
+    await e.settleItemCard(p0, e._loopId);
+    ok(e.state.itemsIdx === afterFirst + 1, '跨到下一圈应再发一张');
+
+    const off = mk({ itemCards: false });
+    const q = off.player(0);
+    q.laps = 3;
+    await off.settleItemCard(q, off._loopId);
+    ok(off.state.itemsIdx === 0 && q.items.length === 0, '关闭道具卡后仍在发牌');
+  }
+
+  // 出牌时机：只有「自己回合 + 掷骰前」可出，且每回合 1 张
+  {
+    const e = mk();
+    const p0 = e.player(0);
+    p0.items = ['loan', 'loan'];
+    ok(!e.canUseItem(p0), '还没进入等待掷骰时不应该能出牌');
+    ready(e);
+    ok(e.canUseItem(p0), '等待掷骰时人类应该能出牌');
+    const cash = p0.cash;
+    ok(e.useItem(p0, 0).ok === true, '紧急信贷应能用');
+    ok(p0.cash === cash + 1500, `紧急信贷应加 1,500，实得 ${p0.cash - cash}`);
+    ok(p0.items.length === 1, '出牌后手牌应减一张');
+    ok(!e.canUseItem(p0), '每回合只能出 1 张');
+    ok(e.useItem(p0, 0).ok === false, '超出每回合上限仍能出牌');
+
+    const ai = e.player(1);
+    ai.items = ['loan'];
+    ok(e.canUseItem(ai) === false, 'AI 不应该走人类的出牌入口');
+  }
+
+  // 遥控骰子：越界拒绝、合法则记下点数
+  {
+    const e = mk();
+    const p0 = e.player(0);
+    ready(e);
+    p0.items = ['die'];
+    ok(e.useItem(p0, 0, 9).ok === false, '点数越界应被拒绝');
+    ok(p0.items.length === 1, '校验不过不应消耗手牌');
+    ok(e.useItem(p0, 0, 5).ok === true, '指定 1–6 应能用');
+    ok(p0.forceDie === 5, `forceDie 应为 5，实为 ${p0.forceDie}`);
+  }
+
+  // 专线直达：目标就是脚下要拒绝；合法时记下目的地
+  {
+    const e = mk();
+    const p0 = e.player(0);
+    ready(e);
+    p0.items = ['line'];
+    ok(e.useItem(p0, 0, p0.pos).ok === false, '目标就是脚下应被拒绝');
+    ok(e.useItem(p0, 0, 13).ok === true, '合法目的地应能用');
+    ok(p0.teleportTo === 13, `teleportTo 应为 13，实为 ${p0.teleportTo}`);
+  }
+
+  // 免租护盾：本回合免一次租，第二次照付
+  {
+    const e = mk();
+    const p0 = e.player(0), p1 = e.player(1);
+    grant(e, p1, [1]);
+    e.state.houses[1] = 5;                     // 租金 2,500，免掉看不出来才怪
+    p0.pos = 0; p0.cash = 20000;
+    ready(e);
+    p0.items = ['shield'];
+    ok(e.useItem(p0, 0).ok === true, '免租护盾应能用');
+    const cash = p0.cash;
+    p0.pos = 1;
+    await e.resolveLanding(p0, e._loopId, 0);
+    ok(p0.cash === cash, `护盾应免掉这次租金（实际付了 ${cash - p0.cash}）`);
+    await e.resolveLanding(p0, e._loopId, 0);
+    ok(p0.cash < cash, '护盾只应免一次');
+  }
+
+  // 双倍收租：业主本回合收租翻倍，清掉增益就回到原始租金
+  {
+    const e = mk();
+    const p0 = e.player(0);
+    grant(e, p0, [1]);
+    p0.buffs.doubleRent = 1;
+    const single = e.baseRent(DC.CELLS[1], p0);
+    ok(e.calcRent(DC.CELLS[1]) === single * 2, '双倍收租没生效');
+    p0.buffs.doubleRent = 0;
+    ok(e.calcRent(DC.CELLS[1]) === single, '增益清掉后应回到原始租金');
+  }
+
+  // 非「本回合」的增益不该留下来：runTurn 收尾会清干净
+  {
+    const e = mk();
+    const p0 = e.player(0);
+    p0.buffs.noRent = 1; p0.buffs.doubleRent = 1; p0.forceDie = 4; p0.teleportTo = 5;
+    e.clearTurnBuffs(p0);
+    ok(p0.buffs.noRent === 0 && p0.buffs.doubleRent === 0, '回合增益未被清空');
+  }
+
+  // 存档：手牌、牌堆、指针都要带上；缺字段的老档恢复时补齐
+  {
+    const e = mk();
+    const p0 = e.player(0);
+    p0.items = ['die', 'loan'];
+    p0.itemLaps = 2;
+    DC.Store.save(e.state);
+    const snap = DC.Store.load();
+    ok(!!snap && Array.isArray(snap.itemsDeck) && snap.itemsDeck.length === DC.ITEMS.length
+      && snap.itemsIdx === e.state.itemsIdx, '存档未保留道具牌堆与指针');
+    ok(!!snap && snap.players[0].items.length === 2, '存档未保留手牌');
+
+    const e3 = mk();
+    const legacy = JSON.parse(JSON.stringify({
+      v: DC.CONFIG.version, players: e3.state.players.map((p) => {
+        const q = JSON.parse(JSON.stringify(p));
+        delete q.items; delete q.itemLaps; delete q.buffs;
+        return q;
+      }), current: 0, round: 1,
+      die: 0, owners: {}, houses: {}, mortgaged: {}, pot: 0, log: [],
+      chance: [], chanceIdx: 0, fate: [], fateIdx: 0, over: false
+    }));
+    e3.restore(legacy);
+    ok(Array.isArray(e3.state.itemsDeck) && e3.state.itemsDeck.length === DC.ITEMS.length,
+      '缺 itemsDeck 的老档恢复时未补牌堆');
+    ok(Array.isArray(e3.state.players[0].items) && e3.state.players[0].items.length === 0,
+      '缺 items 的老档恢复时未补手牌容器');
+    ok(e3.state.players[0].itemLaps === (legacy.players[0].laps || 0),
+      '缺 itemLaps 的老档恢复时未补齐计数器');
+    ok(!!e3.state.players[0].buffs && e3.state.players[0].buffs.noRent === 0,
+      '缺 buffs 的老档恢复时未补齐');
+  }
+}
+
+/* ============================================================
    B. 随机对局：逐回合不变量
    ============================================================ */
 {
@@ -852,7 +1079,7 @@ const group = (name) => { const g = { name, pass: 0, fail: [], notes: [] }; grou
   const byType = {}, cov = {};
   // 两种建房规则各跑一半：既覆盖两条分支，也能量化对局长度差异
   const byRules = { classic: { n: 0, rounds: 0, houses: 0 }, simple: { n: 0, rounds: 0, houses: 0 } };
-  let skillCards = 0;
+  let skillCards = 0, itemDraws = 0;
 
   for (let i = 0; i < GAMES; i++) {
     const seed = SEED0 + i;
@@ -860,9 +1087,10 @@ const group = (name) => { const g = { name, pass: 0, fail: [], notes: [] }; grou
     const classic = i % 2 === 0;
     const world = createWorld(seed);
     const checker = makeChecker(world);
-    const r = await playGame(seed, policy, checker, world, MAX_ROUNDS, classic, SKILLS);
+    const r = await playGame(seed, policy, checker, world, MAX_ROUNDS, classic, SKILLS, ITEMS);
     totalAsks += r.asks; totalRounds += r.round; totalHouses += r.houses; totalOwned += r.owned;
     skillCards += r.skillDrawn;
+    itemDraws += r.itemDrawn;
     if (r.capped) capped++; else if (r.over) ended++;
     const b = byRules[classic ? 'classic' : 'simple'];
     b.n++; b.rounds += r.round; b.houses += r.houses;
@@ -893,6 +1121,10 @@ const group = (name) => { const g = { name, pass: 0, fail: [], notes: [] }; grou
     ? `技能卡开启：${GAMES} 局共发出 ${skillCards} 张（平均每局 ${(skillCards / GAMES).toFixed(0)} 张、`
       + `每 ${(totalRounds / Math.max(skillCards, 1)).toFixed(1)} 回合一张）；加 --skills=0 再跑一遍可对比对局长度`
     : `技能卡已按 --skills=0 关闭（本次未抽任何牌）`);
+  g.notes.push(ITEMS
+    ? `道具卡开启：${GAMES} 局绕圈发出 ${itemDraws} 张、另有 ${cov.grantItem ? cov.grantItem - itemDraws : 0} 张来自机会 / 命运`
+      + `（合计 ${(cov.grantItem / GAMES).toFixed(1)} 张/局，实际打出 ${cov.useItem || 0} 张）；加 --items=0 可对比对局长度`
+    : `道具卡已按 --items=0 关闭（本次未发未出）`);
   g.notes.push('决策分布 ' + Object.entries(byType).sort((a, b) => b[1] - a[1])
     .map(([k, v]) => `${k}:${v}`).join(' '));
 
@@ -904,6 +1136,7 @@ const group = (name) => { const g = { name, pass: 0, fail: [], notes: [] }; grou
     'unmortgage', 'declareBankrupt', 'sendToJail', 'buy'
   ];
   if (SKILLS) expected.push('settleSkillCard');
+  if (ITEMS) expected.push('settleItemCard', 'grantItem', 'useItem');
   const missed = expected.filter((k) => !cov[k]);
   g.notes.push('路径覆盖 ' + expected.filter((k) => cov[k]).map((k) => `${k.replace('land:', '')}:${cov[k]}`).join(' '));
   if (missed.length) g.notes.push('未覆盖（加大 --games 或换 --seed 试试）：' + missed.join(' '));
@@ -924,7 +1157,7 @@ const group = (name) => { const g = { name, pass: 0, fail: [], notes: [] }; grou
     const policy = ['normal', 'cautious', 'reckless'][i % 3];
     const run = async () => {
       const w = createWorld(seed);
-      return playGame(seed, policy, makeChecker(w), w, MAX_ROUNDS, true, SKILLS);
+      return playGame(seed, policy, makeChecker(w), w, MAX_ROUNDS, true, SKILLS, ITEMS);
     };
     const a = await run(), b = await run();
     const same = a.hash === b.hash && a.round === b.round && a.over === b.over && a.owned === b.owned;

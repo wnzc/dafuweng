@@ -24,6 +24,60 @@ window.DC = window.DC || {};
       return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];
     });
   }
+  /* 卡牌大全养在弹层里。这里生成的是个文档内的小链接按钮，data-cards 记着
+     「从哪儿来的」（rules / start），交给 init 里的一次事件委托统一接管 ——
+     这样关掉卡牌大全时才知道该把哪个弹层放回来。 */
+  function cardLink(text, from) {
+    return '<button type="button" class="doclink" data-cards="' + from + '">' +
+      esc(text) + '<i aria-hidden="true">›</i></button>';
+  }
+
+  /* 每张牌的详细作用：表格右列。每种 kind 都要有一句，否则右列会空一格 */
+  function cardNote(c) {
+    switch (c.kind) {
+      case 'gain':
+        return c.name
+          ? '立即进账 ' + money(c.amount) + '，没有后续费用。'
+          : '直接进账 ' + money(c.amount) + '，不触发其他结算。';
+      case 'pay':
+        return '从现金里扣 ' + money(c.amount) + '；现金不够时要先拆房或抵押筹款，仍不够才破产。';
+      case 'payPerHouse':
+        return '按你名下房屋总数计费（每栋 ' + money(c.amount) + '），一间房都没有就免付。';
+      case 'collectAll':
+        return '其他每位玩家各付你 ' + money(c.amount) + '，已经破产的不参与。';
+      case 'moveTo':
+        return c.target === C.goPos
+          ? '移动到起点并结算，经过起点照常领薪。'
+          : '移动到该格并结算落点：该买的地、该付的租一样不少。';
+      case 'move':
+        return (c.steps > 0 ? '前进 ' : '后退 ') + Math.abs(c.steps) + ' 格并结算落点。';
+      case 'nearest':
+        return '顺时针找到最近的车站，移动过去并结算。';
+      case 'jail':
+        return '直接送入监狱；没有出狱许可证就只能掷出 6 或缴保释金。';
+      case 'jailCard':
+        return '攒一张「出狱许可证」，入狱时可以立刻出狱。';
+      case 'lapBonus':
+        return '按你已经完成的圈数计价（每圈 ' + money(c.per) + '），上限 ' + money(c.cap) + '。';
+      case 'freeHouse':
+        return '在自有地产上免费升一级，同样受经典建房规则约束；一处都盖不了时折算 '
+          + money(c.fallback) + ' 现金。';
+      case 'item':
+        return '从道具牌堆抽一张进手牌；手牌已满 ' + C.maxItems + ' 张时折算 '
+          + money(C.itemFallback) + ' 现金。';
+      /* 以下 5 种是道具卡 */
+      case 'forceDie':
+        return '本次掷骰直接按你指定的点数走（1–6），用来精确踩到想要的地。';
+      case 'teleport':
+        return '本回合不再掷骰，直接走到你选的那一格并结算；经过起点照常领薪。';
+      case 'noRent':
+        return '本回合踩到他人地产免付一次租金；抵押中的地产本来就免租，不会消耗护盾。';
+      case 'doubleRent':
+        return '本回合你收到的租金翻倍，回合结束即失效。';
+      default:
+        return '';
+    }
+  }
 
   /* ============================================================ */
   function UI(engine) {
@@ -50,8 +104,9 @@ window.DC = window.DC || {};
         app: $('app'), hud: document.querySelector('.hud'), board: $('board'), cells: $('cells'), tokens: $('tokens'),
         hub: $('hub'), hubDice: $('hubDice'), hubRound: $('hubRound'), hubWho: $('hubWho'),
         hubPot: $('hubPot'), hubTag: $('hubTag'),
-        strip: $('strip'), ticker: $('ticker'), tickerList: $('tickerList'), dock: $('dock'),
-        btnRoll: $('btnRoll'), btnAssets: $('btnAssets'), btnRules: $('btnRules'),
+        strip: $('strip'), ticker: $('ticker'), tickerNow: $('tickerNow'), dock: $('dock'),
+        btnRoll: $('btnRoll'), btnAssets: $('btnAssets'), btnRules: $('btnRules'), btnLog: $('btnLog'),
+        handbar: $('handbar'), hand: $('hand'),
         btnSound: $('btnSound'), btnMenu: $('btnMenu'),
         sheetLayer: $('sheetLayer'), toasts: $('toasts'), fx: $('fx')
       };
@@ -60,6 +115,9 @@ window.DC = window.DC || {};
       this.buildHub();
       this.bindChrome();
       this.applyMotion();
+      // 先把三个手牌空槽画出来：棋盘边长预算要按「手牌条已经占位」来算，
+      // 否则开局瞬间手牌条撑开会把棋盘顶出舞台
+      this.renderHand();
 
       // 棋盘取「可用区域」的正方形边长：任何视口下都不横滚、不裁切
       var stage = document.querySelector('.stage');
@@ -69,7 +127,11 @@ window.DC = window.DC || {};
         var padY = parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom);
         var w = stage.clientWidth - padX;
         var landscape = window.matchMedia('(orientation: landscape) and (max-height: 560px)').matches;
-        var chrome = self.els.hud.offsetHeight + self.els.strip.offsetHeight + self.els.dock.offsetHeight;
+        // 除了顶栏 / 玩家条 / 操作坞，手牌条与战报条（都是定高）也要算进去，
+        // 否则棋盘会按过大的边长铺开、把下面两条压掉
+        var chrome = self.els.hud.offsetHeight + self.els.strip.offsetHeight + self.els.dock.offsetHeight +
+          (self.els.handbar ? self.els.handbar.offsetHeight : 0) +
+          (self.els.ticker ? self.els.ticker.offsetHeight : 0);
         // 保留战报最小高度 + 底部投影余量，其余都给棋盘
         var reserve = landscape ? 18 : 48;
         var availH = window.innerHeight - chrome - reserve - Math.max(0, padY - 10);
@@ -83,6 +145,7 @@ window.DC = window.DC || {};
         self.els.board.style.setProperty('--u', ((side - pad) / 100) + 'px');
       };
       if (window.ResizeObserver) new ResizeObserver(fit).observe(stage);
+      this.fitBoard = fit;              // 手牌条显示/隐藏时也要重算（设置里切换道具卡）
       window.addEventListener('resize', fit);
       window.addEventListener('orientationchange', function () { setTimeout(fit, 150); });
       fit();
@@ -98,6 +161,14 @@ window.DC = window.DC || {};
       document.addEventListener('keydown', function (ev) {
         if (ev.key === 'Escape' && self._sheet && self._sheet.dismissible) { self.dismissSheet(); }
       });
+      // 弹层里的「卡牌大全」链接：所有 sheet 共用这一次委托，data-cards 是来源
+      this.els.sheetLayer.addEventListener('click', function (ev) {
+        var t = ev.target;
+        var link = t && t.closest && t.closest('[data-cards]');
+        if (!link) return;
+        ev.preventDefault();
+        self.openCards(link.getAttribute('data-cards'));
+      });
       return this;
     },
 
@@ -106,6 +177,7 @@ window.DC = window.DC || {};
       this.els.btnRoll.addEventListener('click', function () { e.pressRoll(); });
       this.els.btnAssets.addEventListener('click', function () { self.openAssets(); });
       this.els.btnRules.addEventListener('click', function () { self.openRules(); });
+      this.els.btnLog.addEventListener('click', function () { self.openLog(); });
       this.els.btnMenu.addEventListener('click', function () { self.openMenu(); });
       this.els.btnSound.addEventListener('click', function () {
         e.settings.sound = !e.settings.sound;
@@ -230,6 +302,7 @@ window.DC = window.DC || {};
       this.renderDock();
       if (this._raiseCtx) this.renderRaiseBody();
       if (this._assetsCtx) this.renderAssetsBody();
+      if (this._itemsCtx) this.renderItemsBody();
     },
 
     renderStrip: function () {
@@ -243,7 +316,9 @@ window.DC = window.DC || {};
           chip.dataset.p = i;
           chip.innerHTML =
             '<span class="chip__dot"></span>' +
-            '<span class="chip__top"><b class="chip__name"></b><span class="chip__badge"></span></span>' +
+            '<span class="chip__top"><b class="chip__name"></b>' +
+              '<span class="chip__hand" hidden></span>' +
+              '<span class="chip__badge"></span></span>' +
             '<span class="chip__cash"></span>' +
             '<span class="chip__meta"></span>';
           chip.addEventListener('click', function () { self.openAssets(i); });
@@ -262,7 +337,17 @@ window.DC = window.DC || {};
         chip.querySelector('.chip__meta').textContent = meta;
         var badge = chip.querySelector('.chip__badge');
         badge.textContent = p.bankrupt ? 'OUT' : (p.isAI ? 'AI' : 'YOU');
-        chip.setAttribute('aria-label', p.name + ' 现金 ' + money(p.cash) + '，' + meta);
+        // 手牌数：矮屏上 .chip__meta 会被整个隐藏，所以单独做一个角标，任何时候都看得见
+        var hand = chip.querySelector('.chip__hand');
+        var held = (p.items || []).length;
+        var showHand = self.e.settings.itemCards !== false && held > 0 && !p.bankrupt;
+        hand.hidden = !showHand;
+        if (showHand) {
+          hand.innerHTML = icon('i-cards') + '<b>' + held + '</b>';
+          hand.setAttribute('title', p.name + ' 手牌 ' + held + ' 张');
+        }
+        chip.setAttribute('aria-label', p.name + ' 现金 ' + money(p.cash) +
+          (showHand ? '，手牌 ' + held + ' 张' : '') + '，' + meta);
       });
       if (this._lastCur !== s.current) {
         this._lastCur = s.current;
@@ -383,6 +468,7 @@ window.DC = window.DC || {};
       else if (p && p.isAI) label.textContent = p.name + ' 行动中…';
       else if (p && p.inJail) label.textContent = '处理监狱事务…';
       else label.textContent = '等待中…';
+      this.renderHand();
     },
 
     stepFlash: function (i) {
@@ -518,12 +604,17 @@ window.DC = window.DC || {};
       setTimeout(function () { t.remove(); }, 3000);
     },
 
+    /* 战报条只留最新一条，完整记录在「全部」弹窗里 —— 所以这里只替换文本，不累积 DOM */
     ticker_: function (entry) {
-      var box = this.els.tickerList;
-      var n = el('div', 'ticker__item ticker__item--' + entry.kind, esc(entry.text));
-      box.appendChild(n);
-      while (box.children.length > 24) box.removeChild(box.firstChild);
-      box.scrollTop = box.scrollHeight;
+      var node = this.els.tickerNow;
+      if (!node) return;
+      node.className = 'ticker__now ticker__item--' + entry.kind;
+      node.textContent = 'R' + entry.round + ' · ' + entry.text;
+      node.title = entry.text;
+      if (!this.e.settings.reducedMotion) {
+        void node.offsetWidth;
+        node.classList.add('is-in');
+      }
       if (this.els.hubLast) this.els.hubLast.textContent = entry.text;
     },
 
@@ -616,6 +707,7 @@ window.DC = window.DC || {};
       this._sheet = null;
       this._raiseCtx = null;
       this._assetsCtx = null;
+      this._itemsCtx = null;
       var layer = this.els.sheetLayer;
       var node = s.node;
       node.classList.remove('is-in');
@@ -962,6 +1054,126 @@ window.DC = window.DC || {};
       });
     },
 
+    /* ---------------- 道具卡 ----------------
+       手牌直接摆在棋盘正下方那排槽位里（index.html 里的 .handbar / .hand），不藏在弹层里。
+       这里只做两件事：渲染那排迷你卡片，以及给「需要选目标」的牌提供输入界面。
+       输入界面复用 sheet —— 遥控骰子选点数、专线直达选目的地，都是必须的输入，
+       不是「查看手牌」的二级菜单。 */
+
+    /* 手牌槽位：固定 C.maxItems 个，空的就是虚线框，有牌才填上内容。
+       手牌签名没变就只更新可出牌状态，不重建 DOM（render 每回合会被叫很多次）。 */
+    renderHand: function () {
+      var self = this, e = this.e;
+      var box = this.els.hand;
+      if (!box) return;
+      var off = e.settings.itemCards === false;
+      if (this.els.handbar) this.els.handbar.hidden = off;
+      if (off) { box.innerHTML = ''; box.dataset.sig = ''; return; }
+      var me = this.humanPlayer();
+      var list = (me && me.items) || [];
+      var can = e.canUseItem(me);
+      var sig = list.join(',');
+      if (box.dataset.sig !== sig) {
+        box.dataset.sig = sig;
+        var html = '';
+        for (var k = 0; k < C.maxItems; k++) {
+          var it = list[k] ? DC.ITEM_BY_ID[list[k]] : null;
+          html += it
+            ? '<button type="button" class="hand__card" data-k="' + k + '" title="' + esc(it.text) + '">' +
+                '<span class="hand__ico">' + icon(it.icon) + '</span>' +
+                '<b class="hand__name">' + esc(it.name) + '</b>' +
+              '</button>'
+            : '<span class="hand__card is-empty" aria-hidden="true"></span>';
+        }
+        box.innerHTML = html;
+        box.querySelectorAll('.hand__card[data-k]').forEach(function (b) {
+          b.addEventListener('click', function () { self.onHandPick(+b.dataset.k); });
+        });
+      }
+      box.querySelectorAll('.hand__card[data-k]').forEach(function (b) { b.classList.toggle('is-ready', can); });
+      box.setAttribute('aria-label', list.length
+        ? '手牌 ' + list.length + ' 张' + (can ? '，现在可以出牌' : '')
+        : '手牌为空');
+    },
+
+    /* 点手牌：能出就直接出；要选目标的先要个输入；轮不到你出牌时，点一下当说明看 */
+    onHandPick: function (idx) {
+      var e = this.e, me = this.humanPlayer();
+      var it = me && DC.ITEM_BY_ID[(me.items || [])[idx]];
+      if (!it) return;
+      if (!e.canUseItem(me)) {
+        this.toast(it.name + '：' + it.text, 'info');
+        return;
+      }
+      if (it.kind === 'forceDie' || it.kind === 'teleport') { this.openItemPicker(idx, it); return; }
+      this.castItem(idx);
+    },
+
+    openItemPicker: function (idx, item) {
+      var self = this;
+      var view = item.kind === 'forceDie' ? 'die' : 'spot';
+      this._itemsCtx = { view: view, idx: idx };
+      this.sheet({
+        kind: 'items',
+        eyebrow: '道具 · ' + item.name,
+        title: view === 'die' ? '指定点数' : '选择目的地',
+        body: el('div', 'items'), dismissible: true,
+        actions: [{ label: '取消', kind: 'ghost' }],
+        onDismiss: function () { self._itemsCtx = null; }
+      });
+      this.renderItemsBody();
+    },
+
+    renderItemsBody: function () {
+      var self = this, e = this.e, ctx = this._itemsCtx;
+      if (!ctx) return;
+      var layer = this.els.sheetLayer;
+      var box = layer && layer.querySelector('.items');
+      if (!box) { this._itemsCtx = null; return; }
+      var me = this.humanPlayer();
+
+      if (ctx.view === 'die') {
+        box.innerHTML =
+          '<p class="items__lead">遥控骰子：本次掷骰按你指定的点数走。</p>' +
+          '<div class="items__dice">' +
+          [1, 2, 3, 4, 5, 6].map(function (v) {
+            return '<button type="button" class="items__pip" data-n="' + v + '"><b>' + v + '</b><span>' + v + ' 格</span></button>';
+          }).join('') +
+          '</div>';
+        box.querySelectorAll('.items__pip').forEach(function (b) {
+          b.addEventListener('click', function () { if (self.castItem(ctx.idx, +b.dataset.n)) self.closeSheet(); });
+        });
+        return;
+      }
+
+      var rows = CELLS.map(function (c) {
+        var oid = e.state.owners[c.i];
+        var owner = (oid !== undefined && oid !== null) ? e.state.players[oid] : null;
+        var here = !!me && me.pos === c.i;
+        var gc = c.type === 'prop' ? DC.GROUPS[c.group].color : (DC.TYPE_COLOR[c.type] || '#8FA6C4');
+        var tag = here ? '当前位置' : (owner ? owner.name + ' 持有' : (c.price ? '无主 · ' + money(c.price) : DC.TYPE_LABEL[c.type]));
+        return '<li><button type="button" class="items__spot" data-i="' + c.i + '"' + (here ? ' disabled' : '') + '>' +
+          '<span class="items__spot-name"><i class="swatch" style="--gc:' + gc + '"></i>' + esc(c.name) + '</span>' +
+          '<span class="items__spot-tag">' + esc(tag) + '</span></button></li>';
+      }).join('');
+      box.innerHTML =
+        '<p class="items__lead">专线直达：本回合不掷骰，直接前往该格并结算；经过起点照常领 ' + money(C.goSalary) + '。</p>' +
+        '<ul class="items__spots">' + rows + '</ul>';
+      box.querySelectorAll('.items__spot').forEach(function (b) {
+        b.addEventListener('click', function () { if (self.castItem(ctx.idx, +b.dataset.i)) self.closeSheet(); });
+      });
+    },
+
+    /* 真正出牌。失败时引擎不消耗手牌，这里只负责把原因说给玩家听 */
+    castItem: function (idx, target) {
+      var e = this.e, me = this.humanPlayer();
+      var item = me && DC.ITEM_BY_ID[(me.items || [])[idx]];
+      var res = e.useItem(me, idx, target);
+      if (!res.ok) { this.toast(res.reason || '无法使用这张道具', 'danger'); return false; }
+      this.toast(item ? '使用「' + item.name + '」' : '已使用道具', 'info');
+      return true;
+    },
+
     /* ---------------- 战报 / 规则 / 设置 / 菜单 ---------------- */
     openLog: function () {
       var s = this.e.state;
@@ -969,7 +1181,11 @@ window.DC = window.DC || {};
       body.innerHTML = s.log.slice().reverse().map(function (l) {
         return '<li class="loglist__row loglist__row--' + l.kind + '"><span class="loglist__r">R' + l.round + '</span>' + esc(l.text) + '</li>';
       }).join('') || '<li class="empty">还没有记录</li>';
-      this.sheet({ eyebrow: '战报 · LEDGER', title: '对局记录', body: body, actions: [{ label: '关闭', kind: 'ghost' }] });
+      this.sheet({
+        eyebrow: '战报 · LEDGER', title: '对局记录',
+        sub: s.log.length ? '本次存档保留的最近 ' + s.log.length + ' 条（新在上）' : undefined,
+        body: body, actions: [{ label: '关闭', kind: 'ghost' }]
+      });
     },
 
     openRules: function () {
@@ -982,10 +1198,62 @@ window.DC = window.DC || {};
         '<h3>经典建房规则</h3><p>默认开启，三条限制只作用于分组的<strong>地产</strong>：必须先<strong>集齐同组全部地产</strong>才能在该组建房；同组内房屋数要均衡（相差不超过 1 栋）；同组内有地块处于抵押状态时不能建房。车站与公用事业没有分组、租金按持有数量计价，不受这三条限制。</p><p>觉得节奏太慢，可以在「设置」里关掉，退回「单块地即可一路升到酒店」的宽松规则。</p>' +
         '<h3>监狱</h3><p>入狱后可缴纳保释金、使用出狱许可证，或掷骰求 6。三回合未掷出 6 将强制保释。</p>' +
         '<h3>卡牌与税收</h3><p>机会与命运会带来收益、罚款、位移或入狱。缴纳的罚款会进入免费停车场的奖池，停在停车场即可全部领取。</p>' +
+        '<p>' + cardLink('卡牌大全：四副牌组共 45 张的完整牌面与作用', 'rules') + '</p>' +
         '<h3>技能卡</h3><p>独立于机会与命运的一副牌，<strong>不占手牌、也没有出牌时机</strong>：每完成一圈自动抽一张，效果当场结算。整体偏收益（施工补贴、贷款贴息、按圈数分红、免费加盖一栋房屋），也夹着违建拆除、年度审计、稽查传唤这类负项。</p><p>其中「路网分红」按你已完成的圈数计价，上限 ¥1,500；「免费加盖」同样受经典建房规则的约束，若当时没有可加盖的地产，会折算为 ¥500 现金，不会空手。</p><p>不想要这套牌，可以在「设置 → 技能卡」里关掉，绕圈就不再发牌。</p>' +
+        '<h3>道具卡</h3><p>与上面两副牌的关键差别是<strong>进手牌、由你主动打出</strong>：机会 / 命运里能抽到，每绕完一圈也会发一张，手牌上限 3 张。手牌就摆在<strong>棋盘正下方</strong>：固定三个位置，空格显示虚线框，有牌就是一张「上图下字」的小卡片，一直可见，点一下就能出牌。</p><p>出牌时机只有一处 —— <strong>自己的回合、按下「掷骰子」之前</strong>，每回合最多 1 张；轮到你能出牌时，这几张小卡片会亮起来。共 5 张：遥控骰子（指定本次点数）、专线直达（本回合不掷骰，直接前往任意地块并结算）、免租护盾（本回合免付一次他人地产的租金）、双倍收租（本回合自己收租翻倍）、紧急信贷（立即获得 ¥1,500）。免租与双倍收租只在本回合有效，回合结束即失效。</p><p>手牌满了以后再绕圈不会再发牌（不会折算现金，免得「囤牌」反而成了收入）。轮不到你出牌时点一下卡片，会提示这张牌的效果。不想要这套牌，可以在「设置 → 道具卡」里关掉。</p>' +
         '<h3>破产</h3><p>现金不足时必须变卖资产；仍无法支付则宣告破产，产业转给债主（或由银行收回）。</p>' +
         '</div>';
       this.sheet({ eyebrow: '规则 · RULES', title: '怎么玩', body: html, actions: [{ label: '知道了', kind: 'primary' }] });
+    },
+
+    /* ---------------- 卡牌大全 ----------------
+       四副牌组的全部牌面，表格列在弹层里。牌面现读 DC，不在这里另抄一份，
+       所以改数值 / 加卡片时这里不用动。
+
+       入口是「规则」与「开局」弹层里的 .doclink 小链接，data-cards 记着来源。
+       关掉时要**把来源弹层放回来**：sheet() 是硬切换（旧弹层已被 innerHTML 清掉），
+       所以不是「保留」而是重新打开一次 —— 这也是开局那处要带上已选人数的原因。 */
+    openCards: function (from) {
+      var self = this;
+      var back = from === 'start' ? function () { self.openStart(true, self._startCount); }
+        : from === 'rules' ? function () { self.openRules(); }
+          : null;
+      var decks = [
+        { name: '机会', list: DC.CHANCE, how: '落在 2 处「机会」格（第 8、20 格）时抽一张，当场结算，不进手牌。' },
+        { name: '命运', list: DC.FATE, how: '落在 2 处「命运」格（第 2、14 格）时抽一张，当场结算，不进手牌。' },
+        { name: '技能卡', list: DC.SKILL, how: '每绕完一圈发一张，当场结算，不进手牌。' },
+        {
+          name: '道具卡', list: DC.ITEMS,
+          how: '每绕完一圈发一张，机会 / 命运里也能抽到。进手牌（上限 ' + C.maxItems +
+            ' 张），自己回合按下「掷骰子」之前才能打出，每回合 1 张。'
+        }
+      ];
+      var total = decks.reduce(function (n, d) { return n + d.list.length; }, 0);
+      var html = '<div class="cardsheet">' + decks.map(function (d) {
+        return '<section>' +
+          '<h3>' + d.name + ' · ' + d.list.length + ' 张</h3>' +
+          '<p class="cardsheet__how">' + esc(d.how) + '</p>' +
+          '<table>' +
+            '<thead><tr><th scope="col">卡牌</th><th scope="col">详细作用</th></tr></thead>' +
+            '<tbody>' + d.list.map(function (c) {
+              return '<tr><td>' + esc(c.name || c.text) + '</td>' +
+                '<td>' + esc(cardNote(c)) + '</td></tr>';
+            }).join('') + '</tbody>' +
+          '</table>' +
+          '</section>';
+      }).join('') + '</div>';
+      this.sheet({
+        eyebrow: '四副牌组 · 共 ' + total + ' 张',
+        title: '卡牌大全',
+        body: html,
+        actions: [{
+          label: back ? (from === 'start' ? '返回开局' : '返回规则') : '关闭',
+          kind: 'ghost',
+          close: false,       // 关键：不能让它顺手把刚放回来的来源弹层也关掉
+          onClick: back || function () { self.closeSheet(); }
+        }],
+        onDismiss: back || undefined   // ✕ / 点遮罩 / Esc 走同一条回头路
+      });
     },
 
     openSettings: function () {
@@ -998,6 +1266,7 @@ window.DC = window.DC || {};
         '<div class="row"><span>减少动画</span><button type="button" class="switch" id="swMotion" role="switch"></button></div>' +
         '<div class="row"><span>经典建房规则</span><button type="button" class="switch" id="swClassic" role="switch"></button></div>' +
         '<div class="row"><span>技能卡</span><button type="button" class="switch" id="swSkill" role="switch"></button></div>' +
+        '<div class="row"><span>道具卡</span><button type="button" class="switch" id="swItem" role="switch"></button></div>' +
         '<div class="row"><span>动画速度</span><div class="seg" id="segSpeed">' +
           '<button type="button" data-v="0.65">慢</button><button type="button" data-v="1">标准</button><button type="button" data-v="1.7">快</button>' +
         '</div></div>' +
@@ -1010,6 +1279,7 @@ window.DC = window.DC || {};
       var swR = document.getElementById('swMotion');
       var swC = document.getElementById('swClassic');
       var swK = document.getElementById('swSkill');
+      var swI = document.getElementById('swItem');
       var sync = function () {
         swS.classList.toggle('is-on', e.settings.sound);
         swS.setAttribute('aria-checked', String(e.settings.sound));
@@ -1023,6 +1293,8 @@ window.DC = window.DC || {};
         swC.setAttribute('aria-checked', String(e.settings.classicRules !== false));
         swK.classList.toggle('is-on', e.settings.skillCards !== false);
         swK.setAttribute('aria-checked', String(e.settings.skillCards !== false));
+        swI.classList.toggle('is-on', e.settings.itemCards !== false);
+        swI.setAttribute('aria-checked', String(e.settings.itemCards !== false));
       };
       sync();
       swS.addEventListener('click', function () {
@@ -1064,6 +1336,16 @@ window.DC = window.DC || {};
           ? '已开启技能卡：每绕完一圈抽一张'
           : '已关闭技能卡：绕圈不再发牌', 'info');
       });
+      swI.addEventListener('click', function () {
+        e.settings.itemCards = e.settings.itemCards === false;
+        if (DC.saveSettings) DC.saveSettings();
+        sync();
+        self.renderHand();
+        if (self.fitBoard) self.fitBoard();
+        self.toast(e.settings.itemCards
+          ? '已开启道具卡：机会 / 命运与每绕一圈都可能发到'
+          : '已关闭道具卡：不再发牌，手牌入口一并隐藏', 'info');
+      });
       var seg = document.getElementById('segSpeed');
       seg.querySelectorAll('button').forEach(function (b) {
         b.classList.toggle('is-on', Math.abs(parseFloat(b.dataset.v) - e.settings.speed) < 0.01);
@@ -1097,7 +1379,7 @@ window.DC = window.DC || {};
     },
 
     /* ---------------- 开局 / 结算 ---------------- */
-    openStart: function (fromMenu) {
+    openStart: function (fromMenu, initialCount) {
       var self = this, e = this.e;
       var save = DC.Store.load();
       var body = el('div', 'start');
@@ -1115,7 +1397,11 @@ window.DC = window.DC || {};
           (e.settings.skillCards !== false
             ? '<li>' + icon('i-bolt') + '每绕完一圈抽一张技能卡，效果当场结算</li>'
             : '') +
-        '</ul>';
+          (e.settings.itemCards !== false
+            ? '<li>' + icon('i-list') + '道具卡进手牌（上限 3 张），摆在棋盘下方，掷骰前点它出牌</li>'
+            : '') +
+        '</ul>' +
+        '<p class="start__cards">' + cardLink('卡牌大全：四副牌组每一张牌的作用', 'start') + '</p>';
       var actions = [{ label: '开始新对局', kind: 'primary', icon: 'i-dice', onClick: function () { self.startGame(count); } }];
       if (save) {
         actions.unshift({ label: '继续上次对局', kind: 'ghost', onClick: function () { self.resumeGame(); } });
@@ -1128,12 +1414,15 @@ window.DC = window.DC || {};
         dismissible: !!fromMenu,
         actions: actions
       });
-      var count = 4;
+      // 从卡牌大全返回时带着上次选的人数，别退回默认 4 人
+      var count = initialCount || this._startCount || 4;
+      this._startCount = count;
       var seg = document.getElementById('segCount');
       seg.querySelectorAll('button').forEach(function (b) {
         b.classList.toggle('is-on', +b.dataset.v === count);
         b.addEventListener('click', function () {
           count = +b.dataset.v;
+          self._startCount = count;
           seg.querySelectorAll('button').forEach(function (x) { x.classList.remove('is-on'); });
           b.classList.add('is-on');
         });

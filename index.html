@@ -76,6 +76,9 @@
     <g id="i-crown" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"><path d="M4 17.4l1.6-8.2 4.2 3.4L12 6l2.2 6.6 4.2-3.4 1.6 8.2z"/><path d="M5.4 20.4h13.2"/></g>
     <g id="i-alert" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"><path d="M12 4.4l8.4 15.2H3.6z"/><path d="M12 10.2v4M12 17.4h.01"/></g>
     <g id="i-menu" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M5 8h14M5 12h14M5 16h14"/></g>
+    <g id="i-x2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 19.4V6.4M4.6 9.8L8 6.4l3.4 3.4M16 19.4V6.4M12.6 9.8L16 6.4l3.4 3.4"/></g>
+    <g id="i-cards" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="3.2" y="7.2" width="11.4" height="13.8" rx="2.2"/><rect x="9.4" y="3" width="11.4" height="13.8" rx="2.2"/></g>
+    <g id="i-cash" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2.8" y="6.6" width="18.4" height="10.8" rx="2.4"/><circle cx="12" cy="12" r="2.6"/><path d="M6.2 9.6v4.8M17.8 9.6v4.8"/></g>
     <g id="i-heart" fill="currentColor"><path d="M12 20s-7-4.3-7-9a4 4 0 0 1 7-2.6A4 4 0 0 1 19 11c0 4.7-7 9-7 9z"/></g>
   </defs>
 </svg>
@@ -111,9 +114,14 @@
     </div>
   </main>
 
+  <!-- 手牌：地图正下方一排三个槽位，空格用虚线框占位 -->
+  <div class="handbar" id="handbar">
+    <div class="hand" id="hand" role="group" aria-label="道具手牌"></div>
+  </div>
+
   <div class="ticker" id="ticker">
-    <div class="ticker__head"><span class="eyebrow">战报 · LEDGER</span></div>
-    <div class="ticker__list" id="tickerList" aria-live="polite"></div>
+    <p class="ticker__now" id="tickerNow" aria-live="polite">准备开始</p>
+    <button class="ticker__more" id="btnLog" type="button" aria-label="查看全部战报">详细</button>
   </div>
 
   <footer class="dock" id="dock">

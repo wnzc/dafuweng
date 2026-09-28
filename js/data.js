@@ -23,6 +23,9 @@ window.DC = window.DC || {};
     rollPauseMs: 200,       // 掷骰结束后、开始移动前的停顿
     taxRate: 0.1,
     taxMin: 1000,
+    maxItems: 3,             // 道具手牌上限；满了再发就折算现金
+    maxItemsPerTurn: 1,      // 每个回合最多出 1 张道具卡
+    itemFallback: 500,       // 发牌时手牌已满、或抽不到道具时的折算现金
     maxLog: 200
   };
 
@@ -129,7 +132,9 @@ window.DC = window.DC || {};
     { text: '房屋修缮，每栋房屋缴纳 ¥250',              kind: 'payPerHouse', amount: 250 },
     { text: '前往外滩',                                kind: 'moveTo', target: 13 },
     { text: '前进五格',                                kind: 'move', steps: 5 },
-    { text: '各位业主向您致意，每人付 ¥200',             kind: 'collectAll', amount: 200 }
+    { text: '各位业主向您致意，每人付 ¥200',             kind: 'collectAll', amount: 200 },
+    { text: '捡到一张道具卡，收进手牌留待出牌',            kind: 'item' },
+    { text: '商会赠礼：获得一张道具卡',                   kind: 'item' }
   ];
 
   DC.FATE = [
@@ -144,7 +149,9 @@ window.DC = window.DC || {};
     { text: '房屋维修，每栋房屋 ¥400',                  kind: 'payPerHouse', amount: 400 },
     { text: '回到起点，领取 ¥2,000',                    kind: 'moveTo', target: 0, salary: true },
     { text: '前进两格',                                kind: 'move', steps: 2 },
-    { text: '银行退回手续费 ¥800',                      kind: 'gain', amount: 800 }
+    { text: '银行退回手续费 ¥800',                      kind: 'gain', amount: 800 },
+    { text: '旧友送来一件道具，收进手牌留待出牌',           kind: 'item' },
+    { text: '意外收获：获得一张道具卡',                   kind: 'item' }
   ];
 
   /* ---------- 技能卡组 ----------
@@ -165,6 +172,35 @@ window.DC = window.DC || {};
     { text: '稽查传唤，直接入狱',                           kind: 'jail' },
     { text: '获得「出狱许可证」，可留用一次',                kind: 'jailCard' }
   ];
+
+  /* ---------- 道具卡组 ----------
+     与机会 / 命运 / 技能卡的根本区别：**进手牌 + 有出牌时机**。
+     出牌窗口只有一个 —— 自己回合、按下「掷骰子」之前（见 engine.canUseItem）；
+     手牌上限 3 张、每回合最多出 1 张。获取途径是机会 / 命运里抽到，
+     以及每绕完一圈发一张（与技能卡同源，但只入手、不立即结算）。
+
+     kind 由 engine.applyItem 解释：
+       forceDie    指定本次掷骰点数（target 1–6）
+       teleport    本回合不掷骰，直接前往 target 格并结算
+       noRent      本回合免付一次他人地产的租金
+       doubleRent  本回合自己收租翻倍
+       gain        立即收款（amount）
+     全部是主动、无对手交互的效果；拆对手房屋这类互相干扰的牌刻意留到后续版本。
+     icon 是卡片上半部分那张图，取值必须是 index.html 里 SVG sprite 的 id
+     （回归脚本会盯着这一点）。 */
+  DC.ITEMS = [
+    { id: 'die',    name: '遥控骰子', text: '指定本次掷骰的点数',            kind: 'forceDie',   icon: 'i-dice' },
+    { id: 'line',   name: '专线直达', text: '本回合不掷骰，直接前往指定地块', kind: 'teleport',   icon: 'i-go' },
+    { id: 'shield', name: '免租护盾', text: '本回合免付一次他人地产的租金',    kind: 'noRent',     icon: 'i-heart' },
+    { id: 'double', name: '双倍收租', text: '本回合自己收租翻倍',            kind: 'doubleRent', icon: 'i-x2' },
+    { id: 'loan',   name: '紧急信贷', text: '立即获得 ¥1,500',               kind: 'gain', amount: 1500, icon: 'i-cash' }
+  ];
+
+  DC.ITEM_BY_ID = (function () {
+    var map = {};
+    DC.ITEMS.forEach(function (it) { map[it.id] = it; });
+    return map;
+  })();
 
   /* ---------- 工具 ---------- */
   DC.util = {

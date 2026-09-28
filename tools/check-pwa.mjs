@@ -330,6 +330,17 @@ try {
     uncached.length ? '缺：' + uncached.join(' ') : `实存 ${cacheInfo.total} 条`);
   if (process.argv.includes('--verbose')) console.log('  缓存内容：' + cacheInfo.urls.join(' '));
 
+  // 发布目录也是白名单（.github/workflows/static.yml）。预缓存里新增的顶层文件
+  // 如果忘了加进那条 cp -R，线上就是 404 —— 这里以 PRECACHE 为准反查一遍。
+  const wfSrc = fs.readFileSync(path.join(ROOT, '.github', 'workflows', 'static.yml'), 'utf8');
+  const topFiles = precache
+    .map((f) => f.replace(/^\//, ''))
+    .filter((f) => f && !f.includes('/'));
+  const notShipped = topFiles.filter((f) =>
+    !new RegExp('(?:^|[\\s/])' + f.replace(/\./g, '\\.') + '(?=\\s|$)').test(wfSrc));
+  check(notShipped.length === 0, `预缓存里的 ${topFiles.length} 个顶层文件都在发布白名单里`,
+    notShipped.length ? '漏了：' + notShipped.join(' ') : '全部在');
+
   /* ── 6. 断网后仍能打开 ── */
   await cdp.send('Network.emulateNetworkConditions',
     { offline: true, latency: 0, downloadThroughput: 0, uploadThroughput: 0 });
@@ -380,6 +391,7 @@ try {
 
   await cdp.send('Network.emulateNetworkConditions',
     { offline: false, latency: 0, downloadThroughput: -1, uploadThroughput: -1 });
+
 } finally {
   cdp?.close();
   chrome.kill('SIGKILL');
