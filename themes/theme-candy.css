@@ -505,17 +505,18 @@ button { font: inherit; color: inherit; }
   color: var(--ink-3);
   white-space: nowrap;
 }
-.hub__last {
-  max-width: calc(var(--u, 4px) * 46);
-  font-size: calc(var(--u, 4px) * 2.1);
-  font-weight: 600;
-  line-height: 1.45;
-  color: var(--ink-2);
-  text-align: center;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
+/* 还没掷过骰时（data-v=0）骰子显示问号，不留一块空白方块 */
+.die[data-v="0"] .pip { display: none; }
+.die[data-v="0"]::after {
+  content: "?";
+  grid-area: 1 / 1 / -1 / -1;
+  display: grid;
+  place-items: center;
+  font-family: var(--font-num);
+  font-size: calc(var(--u, 4px) * 5.4);
+  font-weight: 800;
+  color: var(--ink-3);
+}
 }
 
 /* ---------- 9. 棋子 ---------- */
@@ -1352,10 +1353,28 @@ button { font: inherit; color: inherit; }
 
 /* ---------- 21. 响应式 ---------- */
 @media (min-width: 900px) {
-  .app { padding-inline: 10px; }
-  .hud { padding-top: 18px; }
+  /* 大屏两栏：棋盘在左吃满高度，信息在右 */
+  .app {
+    grid-template-columns: minmax(0, 1fr) minmax(268px, 318px);
+    grid-template-rows: auto auto auto auto auto;
+    grid-template-areas:
+      "stage hud"
+      "stage strip"
+      "stage handbar"
+      "stage ticker"
+      "stage dock";
+    align-content: space-between;
+    gap: 0 12px;
+    max-width: 1220px;
+    padding-inline: 12px;
+  }
+  .stage { grid-area: stage; padding: 10px 4px 34px; }
+  .hud { grid-area: hud; padding: 18px 0 6px; }
+  .strip { grid-area: strip; padding: 0 0 16px; }
+  .handbar { grid-area: handbar; padding: 0 0 10px; }
+  .ticker { grid-area: ticker; margin: 0; }
+  .dock { grid-area: dock; padding: 0 0 24px; }
   .brand__name { font-size: 19px; }
-  .strip { padding-inline: 14px; }
   .sheet {
     left: 50%;
     right: auto;
@@ -1372,14 +1391,14 @@ button { font: inherit; color: inherit; }
 @media (orientation: landscape) and (max-height: 560px) {
   .app {
     grid-template-columns: min(56vw, calc(100dvh - 20px)) minmax(0, 1fr);
-    grid-template-rows: auto auto auto auto minmax(0, 1fr) auto;
+    grid-template-rows: auto auto auto auto auto;
     grid-template-areas:
       "stage hud"
       "stage strip"
       "stage handbar"
       "stage ticker"
-      "stage ."
       "stage dock";
+    align-content: space-between;
     gap: 0 10px;
     max-width: none;
   }

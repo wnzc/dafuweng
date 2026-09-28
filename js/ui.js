@@ -103,7 +103,7 @@ window.DC = window.DC || {};
       this.els = {
         app: $('app'), hud: document.querySelector('.hud'), board: $('board'), cells: $('cells'), tokens: $('tokens'),
         hub: $('hub'), hubDice: $('hubDice'), hubRound: $('hubRound'), hubWho: $('hubWho'),
-        hubPot: $('hubPot'), hubTag: $('hubTag'),
+        hubPot: $('hubPot'),
         strip: $('strip'), ticker: $('ticker'), tickerNow: $('tickerNow'), dock: $('dock'),
         btnRoll: $('btnRoll'), btnAssets: $('btnAssets'), btnRules: $('btnRules'), btnLog: $('btnLog'),
         handbar: $('handbar'), hand: $('hand'),
@@ -126,15 +126,22 @@ window.DC = window.DC || {};
         var padX = parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight);
         var padY = parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom);
         var w = stage.clientWidth - padX;
-        var landscape = window.matchMedia('(orientation: landscape) and (max-height: 560px)').matches;
-        // 除了顶栏 / 玩家条 / 操作坞，手牌条与战报条（都是定高）也要算进去，
-        // 否则棋盘会按过大的边长铺开、把下面两条压掉
-        var chrome = self.els.hud.offsetHeight + self.els.strip.offsetHeight + self.els.dock.offsetHeight +
-          (self.els.handbar ? self.els.handbar.offsetHeight : 0) +
-          (self.els.ticker ? self.els.ticker.offsetHeight : 0);
-        // 保留战报最小高度 + 底部投影余量，其余都给棋盘
-        var reserve = landscape ? 18 : 48;
-        var availH = window.innerHeight - chrome - reserve - Math.max(0, padY - 10);
+        // 两栏布局（大屏 / 横屏矮屏）：棋盘独占左栏，纵向预算里就**不该**再扣
+        // 顶栏 / 玩家条 / 手牌条 / 战报条 / 操作坞 —— 它们在右栏，本来就不占棋盘的高度。
+        // 单列才需要扣，那几条是叠在棋盘下面的。早先横屏没分情况，扣完只剩 51px，
+        // 触发了下面的 `side > 100` 兜底直接 return，棋盘靠上一次的内联尺寸「碰巧」显示。
+        var twoCol = window.matchMedia('(min-width: 900px)').matches ||
+          window.matchMedia('(orientation: landscape) and (max-height: 560px)').matches;
+        var availH;
+        if (twoCol) {
+          availH = window.innerHeight - padY - 16;     // 只留底部立体边与投影的余量
+        } else {
+          var chrome = self.els.hud.offsetHeight + self.els.strip.offsetHeight + self.els.dock.offsetHeight +
+            (self.els.handbar ? self.els.handbar.offsetHeight : 0) +
+            (self.els.ticker ? self.els.ticker.offsetHeight : 0);
+          // 保留战报最小高度 + 底部投影余量，其余都给棋盘
+          availH = window.innerHeight - chrome - 48 - Math.max(0, padY - 10);
+        }
         var side = Math.floor(Math.min(w, availH, 640));
         if (!(side > 100)) return;
         var bcs = getComputedStyle(self.els.board);
@@ -282,13 +289,11 @@ window.DC = window.DC || {};
           '</div>' +
           '<div class="hub__who" id="hubWho">准备开始</div>' +
           '<div class="hub__pot" id="hubPot">罚款池 ¥0</div>' +
-          '<div class="hub__last" id="hubLast"></div>' +
         '</div>';
       this.els.hubRound = document.getElementById('hubRound');
       this.els.hubDice = document.getElementById('hubDice');
       this.els.hubWho = document.getElementById('hubWho');
       this.els.hubPot = document.getElementById('hubPot');
-      this.els.hubLast = document.getElementById('hubLast');
     },
 
     /* ---------------- 渲染 ---------------- */
@@ -615,7 +620,6 @@ window.DC = window.DC || {};
         void node.offsetWidth;
         node.classList.add('is-in');
       }
-      if (this.els.hubLast) this.els.hubLast.textContent = entry.text;
     },
 
     sfx: function (name) {

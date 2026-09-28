@@ -237,6 +237,10 @@ button { font: inherit; color: inherit; }
   scrollbar-width: none;
   scroll-snap-type: x proximity;
   -webkit-overflow-scrolling: touch;
+  /* 两端渐隐（宽度≈横向 padding）：溢出时暗示可以横滑，
+     避免卡片在屏边被「切」得像布局错误；不溢出时渐隐区只落在 padding 上 */
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 12px, #000 calc(100% - 12px), transparent);
+  mask-image: linear-gradient(90deg, transparent, #000 12px, #000 calc(100% - 12px), transparent);
 }
 .strip::-webkit-scrollbar { display: none; }
 
@@ -600,17 +604,18 @@ button { font: inherit; color: inherit; }
   color: var(--ink-3);
   white-space: nowrap;
 }
-.hub__last {
-  max-width: calc(var(--u, 4px) * 46);
-  font-size: calc(var(--u, 4px) * 2.1);
-  font-weight: 800;
-  line-height: 1.45;
-  color: var(--ink-2);
-  text-align: center;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
+/* 还没掷过骰时（data-v=0）骰子显示一个问号。
+   以前这里是一片纯白方块，看着像加载失败；战报另有战报条，不必挤在棋盘中心。 */
+.die[data-v="0"] .pip { display: none; }
+.die[data-v="0"]::after {
+  content: "?";
+  grid-area: 1 / 1 / -1 / -1;
+  display: grid;
+  place-items: center;
+  font-family: var(--font-num);
+  font-size: calc(var(--u, 4px) * 5.4);
+  font-weight: 900;
+  color: var(--ink-3);
 }
 
 /* ---------- 9. 棋子 ---------- */
@@ -1689,10 +1694,30 @@ button { font: inherit; color: inherit; }
 
 /* ---------- 21. 响应式 ---------- */
 @media (min-width: 900px) {
-  .app { padding-inline: 10px; }
-  .hud { padding-top: 18px; }
+  /* 大屏也改成两栏：棋盘在左吃满高度，信息在右。
+     以前是单列 —— 棋盘被下面的手牌条 + 战报条挤到 473px（高度预算的瓶颈不是宽度），
+     而容器有 960px 宽，左右各白空 240px。 */
+  .app {
+    grid-template-columns: minmax(0, 1fr) minmax(268px, 318px);
+    grid-template-rows: auto auto auto auto auto;
+    grid-template-areas:
+      "stage hud"
+      "stage strip"
+      "stage handbar"
+      "stage ticker"
+      "stage dock";
+    align-content: space-between;
+    gap: 0 12px;
+    max-width: 1220px;
+    padding-inline: 12px;
+  }
+  .stage { grid-area: stage; padding: 10px 4px 34px; }
+  .hud { grid-area: hud; padding: 18px 0 6px; }
+  .strip { grid-area: strip; padding: 0 0 16px; }
+  .handbar { grid-area: handbar; padding: 0 0 10px; }
+  .ticker { grid-area: ticker; margin: 0; }
+  .dock { grid-area: dock; padding: 0 0 24px; }
   .brand__name { font-size: 20px; }
-  .strip { padding-inline: 14px; }
   .sheet {
     left: 50%;
     right: auto;
@@ -1733,21 +1758,34 @@ button { font: inherit; color: inherit; }
 }
 
 @media (orientation: landscape) and (max-height: 560px) {
+  /* 棋盘在左、信息在右。右栏不再留一个吸收行（那会变成一条 100 多像素的空洞），
+     改成各行 height:auto + space-between，余量摊到各行之间，操作坞照样贴底。 */
   .app {
     grid-template-columns: min(56vw, calc(100dvh - 20px)) minmax(0, 1fr);
-    grid-template-rows: auto auto auto auto minmax(0, 1fr) auto;
+    grid-template-rows: auto auto auto auto auto;
     grid-template-areas:
       "stage hud"
       "stage strip"
       "stage handbar"
       "stage ticker"
-      "stage ."
       "stage dock";
+    align-content: space-between;
     gap: 0 10px;
     max-width: none;
   }
   .hud { grid-area: hud; padding: max(6px, env(safe-area-inset-top)) 12px 0; }
-  .strip { grid-area: strip; padding: 4px 12px 12px; }
+  /* 右栏最多两百多像素宽，横排 4 张卡必然溢出、自己的卡常被顶出屏外；
+     改 2×2 网格全部亮出来，meta 行藏掉换高度 */
+  .strip {
+    grid-area: strip;
+    padding: 4px 12px 12px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    overflow: visible;
+    scroll-snap-type: none;
+  }
+  .chip { min-width: 0; padding: 5px 10px 6px 6px; }
+  .chip__meta { display: none; }
   .handbar { grid-area: handbar; padding: 0 12px 6px; }
   .hand { gap: 6px; }
   .hand__card { width: 42px; height: 52px; }
@@ -1757,8 +1795,32 @@ button { font: inherit; color: inherit; }
   .dock { grid-area: dock; grid-template-columns: 1fr 1.4fr 1fr; padding: 4px 12px max(20px, calc(env(safe-area-inset-bottom) + 8px)); }
   .dock__main { min-height: 48px; }
   .btn { min-height: 46px; }
-  .chip { min-width: 116px; padding: 5px 10px 6px 6px; }
   .toasts { bottom: 14px; }
+  /* 弹层改居中浮层：底部弹出在三百多像素的高度里只剩一条缝，
+     售价和租金表全被折进滚动区，而它们是买/卖决策的核心依据 */
+  .sheet {
+    left: 50%;
+    right: auto;
+    bottom: 50%;
+    width: min(620px, 94vw);
+    max-height: 94dvh;
+    border-radius: var(--r-xl);
+    transform: translate(-50%, 44%) scale(.9);
+  }
+  .sheet.is-in { transform: translate(-50%, 50%) scale(1); }
+  .sheet.is-out { transform: translate(-50%, 44%) scale(.9); }
+  .sheet__head { padding-bottom: 6px; }
+  .sheet__title { font-size: 20px; }
+  .sheet__sub { margin-top: 4px; font-size: 12px; }
+  /* 地契卡同步压缩：色带/大名行收矮，租金表两列平铺，争取一屏看完 */
+  .deed__band { padding: 7px 14px; }
+  .deed__name { margin: 8px 16px; padding: 4px 0; font-size: 20px; }
+  /* 购买/格子详情弹层的标题已经是地名，卡里的大名行纯属重复，藏掉换两行租金 */
+  .sheet .deed:not(.deed--mini) .deed__name { display: none; }
+  .deed__table { font-size: 12.5px; }
+  .deed__table td { padding: 4px 0; }
+  .deed__table tbody { display: grid; grid-template-columns: 1fr 1fr; column-gap: 28px; }
+  .deed__table tr { display: flex; justify-content: space-between; gap: 10px; }
 }
 
 @media (max-width: 340px) {
