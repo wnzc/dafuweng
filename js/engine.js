@@ -1089,14 +1089,23 @@ window.DC = window.DC || {};
        useItem 同步改状态即可（跟 pressRoll 是同一性质的操作），
        绝不能塞进 ask 通道 —— _askResolve 是单通道，抢了会和买地 / 升级 / 监狱弹窗互相打架。 */
 
-    /* 现在能不能出牌：本人回合、还没掷骰、本回合没出过、开关开着 */
+    /* 人类界面用：现在能不能点手牌出牌 —— 自己的回合、按下掷骰子之前、本回合还没出过。
+       注意别把它当成 useItem 的守卫：AI 没有「等待掷骰」这个窗口，
+       这里对 AI 一律返回 false（见下面 canPlayItem 的注释）。 */
     canUseItem: function (p) {
-      if (this.settings.itemCards === false) return false;
       if (!p || p.isAI || p.bankrupt || !this.state || this.state.over) return false;
-      if (!Array.isArray(p.items) || !p.items.length) return false;
       if (!this.state.awaitingRoll) return false;
-      if ((this.state.itemsUsedTurn || 0) >= C.maxItemsPerTurn) return false;
-      return true;
+      return this.canPlayItem(p);
+    },
+
+    /* 出牌的通用门槛，人机共用：开关开着、手牌非空、本回合额度没用完。
+       useItem 必须用它 —— 早先 useItem 复用了 canUseItem，结果 AI 因为
+       「不是人类」被整条挡住，出牌永远失败（AI 于是白囤一局牌）。 */
+    canPlayItem: function (p) {
+      if (this.settings.itemCards === false) return false;
+      if (!p || p.bankrupt || !this.state || this.state.over) return false;
+      if (!Array.isArray(p.items) || !p.items.length) return false;
+      return (this.state.itemsUsedTurn || 0) < C.maxItemsPerTurn;
     },
 
     /* 发一张道具进手牌。
@@ -1139,7 +1148,7 @@ window.DC = window.DC || {};
 
     /* 出一张手牌。返回 { ok, reason }，UI 用 reason 直接提示玩家 */
     useItem: function (p, idx, target) {
-      if (!this.canUseItem(p)) return { ok: false, reason: '现在不是出牌时机' };
+      if (!this.canPlayItem(p)) return { ok: false, reason: '现在不是出牌时机' };
       var item = DC.ITEM_BY_ID[p.items[idx]];
       if (!item) return { ok: false, reason: '这张道具不存在' };
       var res = this.applyItem(p, item, target);

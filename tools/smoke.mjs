@@ -99,9 +99,14 @@ function makeEngine(DC, { humanPolicy, onState, settings }) {
   // 这里必须等 waitRoll() 把 resolver 装好再按，否则 promise 永不兑现。
   function autoRoll() {
     if (eng.__rollTimer) return;
+    let tries = 0;
     const tick = () => {
       if (!eng.state || eng.state.over || !eng.state.awaitingRoll) { eng.__rollTimer = null; return; }
       if (eng._rollResolve) { eng.__rollTimer = null; eng.pressRoll(); return; }
+      // 停在等待掷骰、却始终没有 resolver：说明引擎没卡在 waitRoll() 上
+      // （多半是某个单元用例手动置了 awaitingRoll）。试够次数就放弃 ——
+      // 否则 setTimeout(0) 会一直重排，测试进程永远不结束。
+      if (++tries > 40) { eng.__rollTimer = null; return; }
       eng.__rollTimer = setTimeout(tick, 0);
     };
     eng.__rollTimer = setTimeout(tick, 0);
@@ -854,9 +859,11 @@ const group = (name) => { const g = { name, pass: 0, fail: [], notes: [] }; grou
   const g = group('道具卡');
   const world = createWorld(11);
   const { DC } = world;
-  // 随机对局里人类不出牌（等于「囤牌不出的玩家」），出牌分支由 AI 与这里的单元用例覆盖
+  // 这里刻意不用 makeEngine：它的 state 监听里挂着「自动按掷骰按钮」的逻辑，
+  // 而本组用例会手动把 awaitingRoll 置成 true 来模拟出牌窗口 ——
+  // 两者相遇时自动按钮等不到 resolver，会 setTimeout(0) 无限重试，整个进程挂死。
   const mk = (settings) => {
-    const { eng } = makeEngine(DC, { humanPolicy: POLICIES.normal, settings });
+    const eng = new DC.Engine({}, Object.assign({}, FAST, settings || {}));
     eng.newGame(4);
     return eng;
   };
@@ -971,6 +978,14 @@ const group = (name) => { const g = { name, pass: 0, fail: [], notes: [] }; grou
     const ai = e.player(1);
     ai.items = ['loan'];
     ok(e.canUseItem(ai) === false, 'AI 不应该走人类的出牌入口');
+    // 但 AI 必须能走同一个 useItem：早先 useItem 复用了 canUseItem，
+    // AI 因为「不是人类」被整条挡掉，整局白囤牌（回归里表现为 useItem
+    // 的调用次数远超实际发牌数，全是失败返回）
+    e.state.itemsUsedTurn = 0;         // 额度按回合重置，这里手动放开
+    const aiCash = ai.cash;
+    ok(e.useItem(ai, 0).ok === true, 'AI 应该能通过 useItem 出牌');
+    ok(ai.cash === aiCash + 1500, `AI 用信贷应加 1,500，实得 ${ai.cash - aiCash}`);
+    ok(ai.items.length === 0, 'AI 出牌后手牌应减一张');
   }
 
   // 遥控骰子：越界拒绝、合法则记下点数
