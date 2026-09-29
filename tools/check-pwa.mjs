@@ -22,7 +22,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import http from 'node:http';
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -31,13 +31,25 @@ const CDP_PORT = +(process.env.CDP_PORT || 9343);
 const PAGES_ORIGIN = 'https://wnzc.github.io/dafuweng/';
 const LIVE = process.argv.includes('--live');
 
-const CHROME = process.env.CHROME || [
-  '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
-  '/Applications/Chromium.app/Contents/MacOS/Chromium',
-  '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge',
-  '/usr/bin/google-chrome',
-  '/usr/bin/chromium'
-].find((p) => fs.existsSync(p));
+// CI 上 Chrome 常通过 action 装到 PATH，路径不固定，光靠写死的绝对路径会漏。
+// 这里在固定路径都找不到时，再用 which/where 从 PATH 翻一个能用的浏览器命令。
+function whichChrome(name) {
+  try {
+    const r = spawnSync(process.platform === 'win32' ? 'where' : 'which', [name], { encoding: 'utf8' });
+    return r.status === 0 ? r.stdout.split('\n')[0].trim() : null;
+  } catch (e) { return null; }
+}
+
+const CHROME = process.env.CHROME
+  || [
+    '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+    '/Applications/Chromium.app/Contents/MacOS/Chromium',
+    '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge',
+    '/usr/bin/google-chrome', '/usr/bin/google-chrome-stable',
+    '/usr/bin/chromium', '/usr/bin/chromium-browser', '/usr/bin/chrome'
+  ].find((p) => fs.existsSync(p))
+  || whichChrome('google-chrome-stable') || whichChrome('google-chrome')
+  || whichChrome('chromium-browser') || whichChrome('chromium') || whichChrome('chrome');
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -134,13 +146,15 @@ function connect(url) {
 }
 
 async function firstPageTarget() {
-  for (let i = 0; i < 60; i++) {
+  for (let i = 0; i < 80; i++) {
     try {
+      // 先确认调试端口已经开（/json/version 比 /json/list 更轻，偶发 list 先报 404）
+      await fetch(`http://127.0.0.1:${CDP_PORT}/json/version`);
       const list = await (await fetch(`http://127.0.0.1:${CDP_PORT}/json/list`)).json();
       const page = list.find((t) => t.type === 'page' && t.webSocketDebuggerUrl);
       if (page) return page;
     } catch (e) { /* 等 Chrome */ }
-    await sleep(200);
+    await sleep(300);
   }
   throw new Error('Chrome 的调试端口一直没就绪');
 }
@@ -151,13 +165,16 @@ if (!CHROME) {
 }
 
 const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'pwa-chrome-'));
+const chromeErr = [];                       // 收集 Chrome 的 stderr，端口没起来时好排查
 const chrome = spawn(CHROME, [
   '--headless=new', '--disable-gpu', '--hide-scrollbars',
   '--no-first-run', '--no-default-browser-check',
+  '--disable-dev-shm-usage',                // 容器里 /dev/shm 太小会让 Chrome 起不来
   ...(process.env.CI ? ['--no-sandbox'] : []),      // GitHub Actions 的 runner 上必须关沙箱
   `--remote-debugging-port=${CDP_PORT}`, `--user-data-dir=${profile}`,
   'about:blank'
-], { stdio: 'ignore' });
+], { stdio: ['ignore', 'ignore', 'pipe'] });
+chrome.stderr.on('data', (d) => chromeErr.push(d.toString()));
 
 let cdp;
 try {
@@ -392,6 +409,10 @@ try {
   await cdp.send('Network.emulateNetworkConditions',
     { offline: false, latency: 0, downloadThroughput: -1, uploadThroughput: -1 });
 
+} catch (e) {
+  // 把 Chrome 的崩溃日志吐出来，否则端口没就绪时完全看不到原因
+  if (chromeErr.length) console.error('Chrome 启动日志（stderr）：\n' + chromeErr.join(''));
+  throw e;
 } finally {
   cdp?.close();
   chrome.kill('SIGKILL');

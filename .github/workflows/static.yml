@@ -40,9 +40,14 @@ jobs:
         run: node tools/check-syntax.mjs
       - name: 规则回归（无头跑对局断言不变量）
         run: node tools/smoke.mjs
+      - name: 安装 Chrome（供 PWA 自检真开 headless 浏览器，runner 上不预装）
+        id: setup-chrome
+        uses: browser-actions/setup-chrome@v1
       - name: PWA 与分享卡自检（真开浏览器，含断网重载）
         # 只做校验，不重新生成 assets/：卡片与图标依赖 macOS 上的
         # 圆体（Yuanti SC），Linux runner 渲染结果必然不同，比对会恒假失败
+        env:
+          CHROME: ${{ steps.setup-chrome.outputs.chrome-path }}
         run: node tools/check-pwa.mjs
 
   # Single deploy job since we're just deploying
