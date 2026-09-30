@@ -365,15 +365,17 @@ try {
   const loaded = await until('document.readyState === "complete"', 8000);
   check(loaded, '断网后页面仍能加载完成');
 
-  // 断网状态下真的走一遍「开始新对局」，而不是只看 DOM 有没有元素
+  // 断网状态下真的走一遍「开始新对局」，而不是只看 DOM 有没有元素。
+  // 入口在首页（#homeStart）；菜单 →「重新开局」那条路才是弹层里的同名按钮。
   const started = await evaluate(`(() => {
-    const btns = Array.from(document.querySelectorAll('.sheet__actions button'));
-    const b = btns.find((x) => x.textContent.indexOf('开始新对局') >= 0);
-    if (!b) return '没有找到开始按钮：[' + btns.map((x) => x.textContent.trim()).join(' | ') + ']';
+    const b = document.querySelector('#homeStart') ||
+      Array.from(document.querySelectorAll('.sheet__actions button'))
+        .find((x) => x.textContent.indexOf('开始新对局') >= 0);
+    if (!b) return '没有找到开始按钮';
     b.click();
     return 'OK';
   })()`);
-  check(started === 'OK', '断网时弹层正常、能点开始新对局', started);
+  check(started === 'OK', '断网时首页正常、能点开始新对局', started);
   await sleep(500);
 
   const painted = await until('document.querySelectorAll("#cells > *").length === 24 && document.querySelectorAll("#tokens > *").length === 4', 5000);

@@ -17,7 +17,7 @@
    重新加载整个页面（不要强制刷新）就能拿到新版，不会打断正在进行的对局。
    ============================================================ */
 
-const CACHE = 'dafuweng-v6';
+const CACHE = 'dafuweng-v8';
 
 /* 需要离线可用的文件。路径相对本文件，因此在
    https://wnzc.github.io/dafuweng/ 和本地任意子目录下都能用。 */
@@ -25,12 +25,14 @@ const PRECACHE = [
   './',
   './index.html',
   './styles.css',
+  './js/theme.js',
   './js/data.js',
   './js/audio.js',
   './js/engine.js',
   './js/ui.js',
   './js/main.js',
   './manifest.webmanifest',
+  './assets/home-bg.svg',
   './assets/icon-192.png',
   './assets/icon-512.png',
   './assets/icon-maskable-512.png',

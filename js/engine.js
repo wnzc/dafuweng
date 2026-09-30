@@ -63,7 +63,10 @@ window.DC = window.DC || {};
       itemCards: true,
       // 默认不跟随系统「减少动画」，避免游戏动效被系统设置整锅关掉；
       // 仍可在设置里手动打开。
-      reducedMotion: false
+      reducedMotion: false,
+      // 主题：auto（跟随系统）/ light / dark。解析与落地在 js/theme.js，
+      // 这里只当作一项普通偏好存下来，跟着其他设置一起持久化。
+      theme: 'auto'
     }, settings || {});
     if (settings && settings.reducedMotion === undefined) {
       this.settings.reducedMotion = false;
@@ -185,6 +188,21 @@ window.DC = window.DC || {};
       return this.gameLoop(id).then(function () {
         if (self.state.over && id === self._loopId) self.finish();
       });
+    },
+
+    /* 就地掐掉还在跑的回合循环（游戏里点左上角回首页时用），**不动 state**：
+       存档停在最后一次「轮到你掷骰」，所以「继续上次对局」会退回那个干净的存档点，
+       而不会停在一半的移动动画里。newGame / restore 走的是同一套作废机制。 */
+    abort: function () {
+      this._loopId++;
+      this._rollResolve = null;
+      this._askResolve = null;
+      if (this.state) {
+        this.state.awaitingRoll = false;
+        this.state.busy = false;
+        this.state.ask = null;      // 挂起的询问没人回答了，别留在 state 里
+        this.emit('state');
+      }
     },
 
     async gameLoop(id) {

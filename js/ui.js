@@ -91,6 +91,7 @@ window.DC = window.DC || {};
     this._raiseCtx = null;
     this._auctionCtx = null;
     this._ticker = null;
+    this._homeVisible = false;
   }
 
   UI.prototype = {
@@ -108,6 +109,8 @@ window.DC = window.DC || {};
         btnRoll: $('btnRoll'), btnAssets: $('btnAssets'), btnRules: $('btnRules'), btnLog: $('btnLog'),
         handbar: $('handbar'), hand: $('hand'),
         btnSound: $('btnSound'), btnMenu: $('btnMenu'),
+        brand: $('brand'),
+        home: $('home'),
         sheetLayer: $('sheetLayer'), toasts: $('toasts'), fx: $('fx')
       };
 
@@ -168,13 +171,22 @@ window.DC = window.DC || {};
       document.addEventListener('keydown', function (ev) {
         if (ev.key === 'Escape' && self._sheet && self._sheet.dismissible) { self.dismissSheet(); }
       });
-      // 弹层里的「卡牌大全」链接：所有 sheet 共用这一次委托，data-cards 是来源
-      this.els.sheetLayer.addEventListener('click', function (ev) {
+      // 「卡牌大全」链接：弹层与首页共用这一次委托，data-cards 记着来源。
+      // 挂在 document 上而不是 sheetLayer —— 首页的链接不在弹层里，挂在弹层上收不到。
+      document.addEventListener('click', function (ev) {
         var t = ev.target;
         var link = t && t.closest && t.closest('[data-cards]');
         if (!link) return;
         ev.preventDefault();
         self.openCards(link.getAttribute('data-cards'));
+      });
+      // 主题变化（系统换肤、设置里改档、首页那颗按钮）都要刷新首页的图标。
+      // 只在这里注册一次；syncHomeTheme 自己会在按钮不存在时跳过。
+      if (DC.theme && DC.theme.onChange) DC.theme.onChange(function () { self.syncHomeTheme(); });
+      // 左上角品牌区 = 回首页（整块是个按钮，键盘 Enter / Space 同样有效）
+      this.els.brand.addEventListener('click', function () {
+        self.e.buzz(8);
+        self.goHome();
       });
       return this;
     },
@@ -230,6 +242,19 @@ window.DC = window.DC || {};
     applyMotion: function () {
       var on = !!this.e.settings.reducedMotion;
       if (this.els.app) this.els.app.classList.toggle('reduce-motion', on);
+      // 首页不在 `.app` 里面，减少动画要单独挂一份
+      if (this.els.home) this.els.home.classList.toggle('reduce-motion', on);
+    },
+
+    /* 首页右上角那颗主题按钮：图标画「按下去会变成什么」，白天挂月亮、黑夜挂太阳。
+       首页没开（按钮不在 DOM 里）时什么也不做，所以可以安全地被主题变化回调反复调用。 */
+    syncHomeTheme: function () {
+      var btn = document.getElementById('homeTheme');
+      if (!btn || !DC.theme) return;
+      var dark = DC.theme.effective() === 'dark';
+      btn.innerHTML = icon(dark ? 'i-sun' : 'i-moon');
+      btn.setAttribute('aria-label', dark ? '切换到白天模式' : '切换到黑夜模式');
+      btn.setAttribute('aria-pressed', String(dark));
     },
 
     /* ---------------- 棋盘 ---------------- */
@@ -706,6 +731,7 @@ window.DC = window.DC || {};
 
     closeSheet: function (fromAsk) {
       if (fromAsk && this._auctionCtx) return;   // 拍卖进行中：弹层由拍卖流程自己收尾
+      var self = this;
       var s = this._sheet;
       if (!s) return;
       this._sheet = null;
@@ -721,6 +747,8 @@ window.DC = window.DC || {};
         layer.innerHTML = '';
         layer.hidden = true;
         document.body.classList.remove('is-locked');
+        // 首页还开着时重画一遍：设置里的规则开关会改掉「规则速览」那几条
+        if (self._homeVisible && self.renderHome) self.renderHome();
       }, 220);
       if (this._lastFocus && this._lastFocus.focus) {
         try { this._lastFocus.focus({ preventScroll: true }); } catch (e) {}
@@ -1295,14 +1323,16 @@ window.DC = window.DC || {};
        四副牌组的全部牌面，表格列在弹层里。牌面现读 DC，不在这里另抄一份，
        所以改数值 / 加卡片时这里不用动。
 
-       入口是「规则」与「开局」弹层里的 .doclink 小链接，data-cards 记着来源。
-       关掉时要**把来源弹层放回来**：sheet() 是硬切换（旧弹层已被 innerHTML 清掉），
-       所以不是「保留」而是重新打开一次 —— 这也是开局那处要带上已选人数的原因。 */
-    openCards: function (from) {
-      var self = this;
-      var back = from === 'start' ? function () { self.openStart(true, self._startCount); }
-        : from === 'rules' ? function () { self.openRules(); }
-          : null;
+       入口是「规则」/「首页」/「开局」弹层里的 .doclink 小链接，data-cards 记着来源。
+       关掉时要**把来源放回来**：sheet() 是硬切换（旧弹层已被 innerHTML 清掉），
+       所以不是「保留」而是重新打开一次 —— 这也是开局那处要带上已选人数的原因。
+       首页不是弹层（是覆盖层），返回时先关掉卡牌大全再把它亮出来。 */
+       openCards: function (from) {
+       var self = this;
+       var back = from === 'start' ? function () { self.openStart(true, self._startCount); }
+         : from === 'home' ? function () { self.closeSheet(); self.openHome(); }
+           : from === 'rules' ? function () { self.openRules(); }
+             : null;
       var decks = [
         { name: '机会', list: DC.CHANCE, how: '落在 2 处「机会」格（第 8、20 格）时抽一张，当场结算，不进手牌。' },
         { name: '命运', list: DC.FATE, how: '落在 2 处「命运」格（第 2、14 格）时抽一张，当场结算，不进手牌。' },
@@ -1332,7 +1362,7 @@ window.DC = window.DC || {};
         title: '卡牌大全',
         body: html,
         actions: [{
-          label: back ? (from === 'start' ? '返回开局' : '返回规则') : '关闭',
+          label: back ? (from === 'start' ? '返回开局' : from === 'home' ? '返回首页' : '返回规则') : '关闭',
           kind: 'ghost',
           close: false,       // 关键：不能让它顺手把刚放回来的来源弹层也关掉
           onClick: back || function () { self.closeSheet(); }
@@ -1354,6 +1384,9 @@ window.DC = window.DC || {};
         '<div class="row"><span>道具卡</span><button type="button" class="switch" id="swItem" role="switch"></button></div>' +
         '<div class="row"><span>动画速度</span><div class="seg" id="segSpeed">' +
           '<button type="button" data-v="0.65">慢</button><button type="button" data-v="1">标准</button><button type="button" data-v="1.7">快</button>' +
+        '</div></div>' +
+        '<div class="row"><span>主题</span><div class="seg" id="segTheme">' +
+          '<button type="button" data-v="auto">跟随系统</button><button type="button" data-v="light">白天</button><button type="button" data-v="dark">黑夜</button>' +
         '</div></div>' +
         '<div class="row row--wide"><button class="btn btn--ghost btn--wide" id="btnNewGame">重新开局</button></div>';
       this.sheet({ eyebrow: '设置 · SETTINGS', title: '偏好', body: body, actions: [{ label: '关闭', kind: 'ghost' }] });
@@ -1441,6 +1474,20 @@ window.DC = window.DC || {};
           b.classList.add('is-on');
         });
       });
+      // 主题：auto 跟着系统走，light / dark 手动锁定；落地由 DC.theme 负责
+      var segTheme = document.getElementById('segTheme');
+      var themeNote = { auto: '主题跟随系统', light: '已切到白天', dark: '已切到黑夜' };
+      segTheme.querySelectorAll('button').forEach(function (b) {
+        b.classList.toggle('is-on', b.dataset.v === (e.settings.theme || 'auto'));
+        b.addEventListener('click', function () {
+          e.settings.theme = b.dataset.v;
+          if (DC.theme) DC.theme.set(e.settings.theme);
+          if (DC.saveSettings) DC.saveSettings();
+          segTheme.querySelectorAll('button').forEach(function (x) { x.classList.remove('is-on'); });
+          b.classList.add('is-on');
+          self.toast(themeNote[b.dataset.v] || '主题已切换', 'info');
+        });
+      });
       document.getElementById('btnNewGame').addEventListener('click', function () {
         self.closeSheet();
         self.openStart(true);
@@ -1463,9 +1510,165 @@ window.DC = window.DC || {};
       document.getElementById('mNew').addEventListener('click', go(function () { self.openStart(true); }));
     },
 
+    /* ---------------- 首页 ----------------
+       进游戏先落在这一页上：人数、规则、存档入口全部铺在页面里，不再一进来就弹底部
+       弹窗。首页是一层固定覆盖层（`.home`），棋盘与操作坞在它后面照常建好、量好尺寸
+       —— 点「开始」只是把它淡出，不参与棋盘的高度预算，也不会把布局顶乱。 */
+    hintsHtml: function () {
+      var e = this.e;
+      return '<ul class="start__hint">' +
+        '<li>' + icon('i-coin') + '起步资金 ' + money(C.startCash) + '，经过起点领 ' + money(C.goSalary) + '</li>' +
+        '<li>' + icon('i-house') + (e.settings.classicRules !== false
+          ? '集齐同组地产后才能建房，再次停在自己的地上即可升级'
+          : '再次停在自己的地上，可升级提高租金') + '</li>' +
+        '<li>' + icon('i-jail') + '保释金 ' + money(C.jailFine) + '，也可以掷 6 出狱</li>' +
+        (e.settings.skillCards !== false
+          ? '<li>' + icon('i-bolt') + '每绕完一圈抽一张技能卡，效果当场结算</li>'
+          : '') +
+        (e.settings.itemCards !== false
+          ? '<li>' + icon('i-list') + '道具卡进手牌（上限 3 张），摆在棋盘下方，掷骰前点它出牌</li>'
+          : '') +
+        '</ul>';
+    },
+
+    renderHome: function () {
+      var self = this, e = this.e;
+      var home = this.els.home;
+      if (!home) return;
+      var save = DC.Store.load();
+      var count = this._startCount || 4;
+      // 规则折叠默认收起，展开状态存在实例上，设置弹层关掉重画首页也不会被收回去
+      var foldOpen = !!this._rulesOpen;
+      home.innerHTML =
+        '<div class="home__top">' +
+          '<button class="icon-btn" id="homeTheme" type="button"></button>' +
+          '<button class="icon-btn" id="homeSound" type="button" aria-label="音效开关"></button>' +
+          '<button class="icon-btn" id="homeSettings" type="button" aria-label="设置">' + icon('i-gear') + '</button>' +
+        '</div>' +
+        // 太阳 / 月亮：用 --sun-* 令牌画，跟着主题走，不放进插画里
+        '<span class="home__sun" aria-hidden="true"></span>' +
+        '<div class="home__scroll">' +
+          '<div class="home__inner">' +
+            '<div class="home__hero">' +
+              '<span class="home__mark" aria-hidden="true">' + icon('i-house') + '</span>' +
+              '<h1 class="home__title">大富翁</h1>' +
+              '<p class="home__sub">地产小镇 · CUTE TYCOON</p>' +
+            '</div>' +
+            // 两个按钮落在页面正中间，人数与规则放在它们下面
+            '<div class="home__actions">' +
+              (save ? '<button class="btn btn--ghost" id="homeResume" type="button">' + icon('i-restart') +
+                '<span class="btn__label">继续上次对局</span></button>' : '') +
+              '<button class="btn btn--primary" id="homeStart" type="button">' + icon('i-dice') +
+                '<span class="btn__label">开始新对局</span></button>' +
+            '</div>' +
+            '<div class="home__panel">' +
+              '<section class="home__sect">' +
+                '<p class="home__label">选择人数 · PLAYERS</p>' +
+                '<div class="seg seg--big" id="homeSeg">' +
+                  '<button type="button" data-v="2">2 人</button>' +
+                  '<button type="button" data-v="3">3 人</button>' +
+                  '<button type="button" data-v="4">4 人</button>' +
+                '</div>' +
+              '</section>' +
+              // 规则速览收进 <details>：原生折叠，键盘 / 读屏都不用额外接线
+              '<details class="home__sect home__fold" id="homeFold"' + (foldOpen ? ' open' : '') + '>' +
+                '<summary class="home__label">规则速览 · RULES' + icon('i-chev') + '</summary>' +
+                self.hintsHtml() +
+              '</details>' +
+              '<p class="home__cards">' +
+                '<button type="button" class="doclink" id="homeRules">完整规则说明<i aria-hidden="true">›</i></button>' +
+                ' · ' + cardLink('卡牌大全', 'home') +
+              '</p>' +
+            '</div>' +
+          '</div>' +
+        '</div>';
+
+      // 主题快切：一按就在白天 / 黑夜之间翻，「跟随系统」那一档留在设置里。
+      // 图标画的是「按下去会变成什么」—— 白天里挂月亮，黑夜里挂太阳。
+      var themeBtn = document.getElementById('homeTheme');
+      self.syncHomeTheme();
+      themeBtn.addEventListener('click', function () {
+        var next = (DC.theme && DC.theme.effective() === 'dark') ? 'light' : 'dark';
+        e.settings.theme = next;
+        if (DC.theme) DC.theme.set(next);
+        if (DC.saveSettings) DC.saveSettings();
+        self.toast(next === 'dark' ? '已切到黑夜模式' : '已切到白天模式', 'info');
+      });
+
+      var sound = document.getElementById('homeSound');
+      var syncSound = function () {
+        sound.innerHTML = icon(e.settings.sound ? 'i-sound' : 'i-mute');
+        sound.setAttribute('aria-label', e.settings.sound ? '关闭音效' : '开启音效');
+        sound.setAttribute('aria-pressed', String(!!e.settings.sound));
+      };
+      syncSound();
+      sound.addEventListener('click', function () {
+        e.settings.sound = !e.settings.sound;
+        DC.audio.setEnabled(e.settings.sound);
+        if (DC.saveSettings) DC.saveSettings();
+        self.syncSound();
+        syncSound();
+        self.toast(e.settings.sound ? '音效已开启' : '音效已静音', 'info');
+      });
+      document.getElementById('homeSettings').addEventListener('click', function () { self.openSettings(); });
+      document.getElementById('homeRules').addEventListener('click', function () { self.openRules(); });
+      var fold = document.getElementById('homeFold');
+      fold.addEventListener('toggle', function () { self._rulesOpen = fold.open; });
+      if (save) document.getElementById('homeResume').addEventListener('click', function () { self.resumeGame(); });
+
+      var seg = document.getElementById('homeSeg');
+      seg.querySelectorAll('button').forEach(function (b) {
+        b.classList.toggle('is-on', +b.dataset.v === count);
+        b.addEventListener('click', function () {
+          count = +b.dataset.v;
+          self._startCount = count;
+          seg.querySelectorAll('button').forEach(function (x) { x.classList.remove('is-on'); });
+          b.classList.add('is-on');
+        });
+      });
+      document.getElementById('homeStart').addEventListener('click', function () { self.startGame(count); });
+    },
+
+    openHome: function () {
+      var home = this.els.home;
+      if (!home) return;
+      this._homeVisible = true;
+      this.renderHome();
+      home.hidden = false;
+      home.classList.remove('is-out');
+      // 首页盖住了游戏本体，别让读屏把后面的棋盘也念出来
+      if (this.els.app) this.els.app.setAttribute('aria-hidden', 'true');
+    },
+
+    /* 游戏里点左上角品牌区回首页。对局还在跑就先把回合循环掐掉（`engine.abort`）：
+       存档仍是最后一次「轮到你掷骰」，所以「继续上次对局」会退回那个干净的点，
+       而不是停在一半的移动动画里。 */
+    goHome: function () {
+      if (this._homeVisible) return;
+      var s = this.e.state;
+      if (s && !s.over) this.e.abort();
+      if (this._sheet) this.closeSheet();
+      this.openHome();
+    },
+
+    hideHome: function () {
+      if (!this._homeVisible) return;
+      var self = this;
+      this._homeVisible = false;
+      var home = this.els.home;
+      if (!home) return;
+      home.classList.add('is-out');
+      if (this.els.app) this.els.app.removeAttribute('aria-hidden');
+      setTimeout(function () {
+        if (self._homeVisible) return;   // 又开回来了，别把它藏掉
+        home.hidden = true;
+        home.classList.remove('is-out');
+      }, 240);
+    },
+
     /* ---------------- 开局 / 结算 ---------------- */
     openStart: function (fromMenu, initialCount) {
-      var self = this, e = this.e;
+      var self = this;
       var save = DC.Store.load();
       var body = el('div', 'start');
       body.innerHTML =
@@ -1473,19 +1676,7 @@ window.DC = window.DC || {};
         '<div class="seg seg--big" id="segCount">' +
           '<button type="button" data-v="2">2 人</button><button type="button" data-v="3">3 人</button><button type="button" data-v="4">4 人</button>' +
         '</div>' +
-        '<ul class="start__hint">' +
-          '<li>' + icon('i-coin') + '起步资金 ' + money(C.startCash) + '，经过起点领 ' + money(C.goSalary) + '</li>' +
-          '<li>' + icon('i-house') + (e.settings.classicRules !== false
-            ? '集齐同组地产后才能建房，再次停在自己的地上即可升级'
-            : '再次停在自己的地上，可升级提高租金') + '</li>' +
-          '<li>' + icon('i-jail') + '保释金 ' + money(C.jailFine) + '，也可以掷 6 出狱</li>' +
-          (e.settings.skillCards !== false
-            ? '<li>' + icon('i-bolt') + '每绕完一圈抽一张技能卡，效果当场结算</li>'
-            : '') +
-          (e.settings.itemCards !== false
-            ? '<li>' + icon('i-list') + '道具卡进手牌（上限 3 张），摆在棋盘下方，掷骰前点它出牌</li>'
-            : '') +
-        '</ul>' +
+        this.hintsHtml() +
         '<p class="start__cards">' + cardLink('卡牌大全：四副牌组每一张牌的作用', 'start') + '</p>';
       var actions = [{ label: '开始新对局', kind: 'primary', icon: 'i-dice', onClick: function () { self.startGame(count); } }];
       if (save) {
@@ -1516,6 +1707,7 @@ window.DC = window.DC || {};
 
     startGame: function (count) {
       this.e.newGame(count);
+      this.hideHome();
       this.rebuildTokens();
       this.closeSheet();
       DC.audio.unlock();
@@ -1528,6 +1720,7 @@ window.DC = window.DC || {};
       var snap = DC.Store.load();
       if (!snap) { this.toast('没有找到存档', 'danger'); return; }
       this.e.restore(snap);
+      this.hideHome();
       this.rebuildTokens();
       this.closeSheet();
       DC.audio.unlock();

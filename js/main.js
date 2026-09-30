@@ -21,7 +21,8 @@
       localStorage.setItem(SETTINGS_KEY, JSON.stringify({
         sound: s.sound, music: s.music, haptics: s.haptics, speed: s.speed,
         reducedMotion: s.reducedMotion, classicRules: s.classicRules !== false,
-        skillCards: s.skillCards !== false, itemCards: s.itemCards !== false
+        skillCards: s.skillCards !== false, itemCards: s.itemCards !== false,
+        theme: s.theme === 'light' || s.theme === 'dark' ? s.theme : 'auto'
       }));
     } catch (e) {}
   }
@@ -38,6 +39,8 @@
     if (DC.audio.setMusic) DC.audio.setMusic(engine.settings.music !== false);
     ui.syncSound();
     ui.applyMotion();
+    // theme.js 在 <head> 里已经按存档上过一遍主题，这里用引擎里的值再确认一次
+    if (DC.theme) DC.theme.apply(engine.settings.theme);
 
     // 供 UI 在设置变化时持久化
     DC.saveSettings = function () { saveSettings(engine.settings); };
@@ -54,7 +57,8 @@
     // 防止双指缩放与双击缩放（保留系统无障碍缩放开关）
     document.addEventListener('gesturestart', function (e) { e.preventDefault(); });
 
-    ui.openStart(false);
+    // 进游戏先落在首页：人数与规则铺在页面上，不弹底部弹窗
+    ui.openHome();
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);

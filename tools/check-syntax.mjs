@@ -1,5 +1,5 @@
 import { readFileSync } from 'fs';
-const files = ['js/data.js', 'js/audio.js', 'js/engine.js', 'js/ui.js', 'js/main.js'];
+const files = ['js/theme.js', 'js/data.js', 'js/audio.js', 'js/engine.js', 'js/ui.js', 'js/main.js'];
 let fail = 0;
 for (const f of files) {
   try {

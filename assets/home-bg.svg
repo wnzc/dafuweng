@@ -1,0 +1,128 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1400" width="1000" height="1400" role="img" aria-label="地产小镇：蓝天白云、太阳与上海天际线">
+  <title>地产小镇 · 首页背景</title>
+  <!-- 画面是「贴底装饰」，天空留空：底色由 styles.css 的天空渐变令牌给，白天 / 黑夜
+       各一套；黑夜模式下整张图再被 CSS filter 压暗，太阳就变成月亮。
+       排版按 center bottom 缩放，手机上是横向裁切、桌面是纵向裁切，所以：
+         横向安全区 x 130–870（地标都压在中间），纵向把城市贴在最底部。
+       （注意：这是 XML，注释里不能再出现连续两个短横线。） -->
+
+  <defs>
+    <!-- 一朵云：三个椭圆叠出圆润轮廓，先画投影再画云体。填充写死在这里，
+         每个实例只用 opacity / transform 变化，避免逐朵调色。 -->
+    <g id="cloud">
+      <ellipse cx="4" cy="20" rx="96" ry="40" fill="#2E6FBE" opacity=".12"/>
+      <ellipse cx="0" cy="0" rx="86" ry="44" fill="#FFFFFF"/>
+      <ellipse cx="-58" cy="10" rx="52" ry="30" fill="#FFFFFF"/>
+      <ellipse cx="60" cy="12" rx="56" ry="32" fill="#FFFFFF"/>
+      <ellipse cx="6" cy="-24" rx="54" ry="36" fill="#FFFFFF"/>
+    </g>
+  </defs>
+
+
+  <!-- 云层：只铺左右两侧，中间那条竖带留给品牌与按钮 —— 白云压在白字上会看不见 -->
+  <use href="#cloud" transform="translate(150 400) scale(.66)" opacity=".5"/>
+  <use href="#cloud" transform="translate(840 470) scale(.78)" opacity=".62"/>
+  <use href="#cloud" transform="translate(196 636) scale(1)" opacity=".8"/>
+  <use href="#cloud" transform="translate(828 700) scale(.84)" opacity=".66"/>
+  <use href="#cloud" transform="translate(120 780) scale(.6)" opacity=".45"/>
+  <use href="#cloud" transform="translate(176 1010) scale(1.1)" opacity=".8"/>
+  <use href="#cloud" transform="translate(862 1000) scale(.9)" opacity=".72"/>
+  <use href="#cloud" transform="translate(330 1160) scale(.55)" opacity=".45"/>
+
+  <!-- 远景天际线：淡、虚、无窗，只压一条轮廓 -->
+  <g fill="#B7C9E2" opacity=".85">
+    <rect x="170" y="1128" width="72" height="128"/>
+    <rect x="250" y="1084" width="58" height="172"/>
+    <rect x="316" y="1146" width="96" height="110"/>
+    <rect x="430" y="1102" width="52" height="154"/>
+    <rect x="500" y="1140" width="110" height="116"/>
+    <rect x="620" y="1096" width="56" height="160"/>
+    <rect x="690" y="1148" width="88" height="108"/>
+    <rect x="786" y="1112" width="66" height="144"/>
+  </g>
+
+  <!-- 近景天际线：1930 年代上海的那几栋标志物，全部落在安全区里 -->
+  <g>
+    <!-- 国际饭店：阶梯式退台 + 尖顶 -->
+    <path d="M356 1058h84v198h-84z" fill="#8DA4C6"/>
+    <path d="M368 1030h60v28h-60z" fill="#9CB1D0"/>
+    <path d="M382 1004h32v26h-32z" fill="#9CB1D0"/>
+    <path d="M398 976l10 28h-20z" fill="#C7D6EA"/>
+    <!-- 汇丰银行：穹顶 -->
+    <path d="M500 1082h96v174h-96z" fill="#93A9CA"/>
+    <path d="M504 1082a44 44 0 0 1 88 0z" fill="#C7D6EA"/>
+    <rect x="545" y="1012" width="6" height="26" fill="#C7D6EA"/>
+    <!-- 江海关：钟楼 -->
+    <path d="M660 1090h74v166h-74z" fill="#8DA4C6"/>
+    <path d="M676 1030h42v60h-42z" fill="#9CB1D0"/>
+    <path d="M668 1030h58v10h-58z" fill="#B7C9E2"/>
+    <path d="M686 998h22v32h-22z" fill="#9CB1D0"/>
+    <path d="M697 966l13 32h-26z" fill="#C7D6EA"/>
+    <circle cx="697" cy="1058" r="13" fill="#FFF0C4"/>
+    <!-- 大世界：塔楼 -->
+    <path d="M806 1120h58v136h-58z" fill="#93A9CA"/>
+    <path d="M818 1074h34v46h-34z" fill="#9CB1D0"/>
+    <circle cx="835" cy="1054" r="20" fill="#C7D6EA"/>
+    <rect x="833" y="1016" width="5" height="22" fill="#C7D6EA"/>
+    <!-- 沿街的低层商铺（x 超出安全区的部分会被手机裁掉，当填充用） -->
+    <path d="M180 1150h86v106h-86zM272 1168h56v88h-56zM420 1140h104v116H420zM606 1156h124v100H606zM736 1162h50v94h-50zM792 1170h66v86h-66z" fill="#849BC0"/>
+    <!-- 亮着灯的窗：夜里被压暗后仍留一点暖色 -->
+    <g fill="#FFF0C4" opacity=".85">
+      <rect x="196" y="1176" width="12" height="16" rx="2"/><rect x="218" y="1176" width="12" height="16" rx="2"/>
+      <rect x="196" y="1204" width="12" height="16" rx="2"/><rect x="240" y="1204" width="12" height="16" rx="2"/>
+      <rect x="438" y="1168" width="12" height="16" rx="2"/><rect x="462" y="1168" width="12" height="16" rx="2"/>
+      <rect x="486" y="1196" width="12" height="16" rx="2"/><rect x="438" y="1196" width="12" height="16" rx="2"/>
+      <rect x="624" y="1184" width="12" height="16" rx="2"/><rect x="650" y="1184" width="12" height="16" rx="2"/>
+      <rect x="676" y="1212" width="12" height="16" rx="2"/><rect x="624" y="1212" width="12" height="16" rx="2"/>
+      <rect x="368" y="1084" width="12" height="16" rx="2"/><rect x="392" y="1084" width="12" height="16" rx="2"/>
+      <rect x="368" y="1116" width="12" height="16" rx="2"/><rect x="416" y="1124" width="12" height="16" rx="2"/>
+      <rect x="512" y="1112" width="12" height="16" rx="2"/><rect x="536" y="1112" width="12" height="16" rx="2"/>
+      <rect x="560" y="1148" width="12" height="16" rx="2"/><rect x="512" y="1148" width="12" height="16" rx="2"/>
+      <rect x="676" y="1112" width="12" height="16" rx="2"/><rect x="700" y="1112" width="12" height="16" rx="2"/>
+      <rect x="676" y="1148" width="12" height="16" rx="2"/><rect x="712" y="1180" width="12" height="16" rx="2"/>
+      <rect x="818" y="1140" width="12" height="16" rx="2"/><rect x="842" y="1140" width="12" height="16" rx="2"/>
+    </g>
+  </g>
+
+  <!-- 地面：暖沙色，给整个画面一个「庄园地基」的落点 -->
+  <g>
+    <path d="M0 1246h1000v154H0z" fill="#EFDFB6"/>
+    <path d="M0 1246h1000v14H0z" fill="#FFF6DC"/>
+    <g fill="#D9C48E" opacity=".55">
+      <ellipse cx="240" cy="1330" rx="86" ry="16"/>
+      <ellipse cx="560" cy="1364" rx="120" ry="18"/>
+    </g>
+    <!-- 几棵圆头小树，呼应棋盘上的可爱造型 -->
+    <g>
+      <rect x="300" y="1290" width="10" height="34" rx="5" fill="#C9A86A"/>
+      <circle cx="305" cy="1272" r="34" fill="#7FBE68"/>
+      <circle cx="286" cy="1284" r="22" fill="#8FCC76"/>
+      <circle cx="324" cy="1284" r="22" fill="#6FAF5A"/>
+      <rect x="686" y="1300" width="9" height="30" rx="4.5" fill="#C9A86A"/>
+      <circle cx="690" cy="1286" r="28" fill="#7FBE68"/>
+      <circle cx="674" cy="1296" r="18" fill="#8FCC76"/>
+      <circle cx="706" cy="1296" r="18" fill="#6FAF5A"/>
+    </g>
+  </g>
+
+  <!-- 飘着的金币：把「地产」这件事点一下 -->
+  <g>
+    <g transform="translate(258 1046) rotate(-14)">
+      <circle r="34" fill="#E09A33"/>
+      <circle r="34" cy="-7" fill="#FFC93C"/>
+      <circle r="22" fill="#FFE066"/>
+      <path d="M0-13v26M-6-5h9a5 5 0 0 1 0 10h-8" fill="none" stroke="#E09A33" stroke-width="4" stroke-linecap="round"/>
+    </g>
+    <g transform="translate(880 998) rotate(12) scale(.72)">
+      <circle r="34" fill="#E09A33"/>
+      <circle r="34" cy="-7" fill="#FFC93C"/>
+      <circle r="22" fill="#FFE066"/>
+      <path d="M0-13v26M-6-5h9a5 5 0 0 1 0 10h-8" fill="none" stroke="#E09A33" stroke-width="4" stroke-linecap="round"/>
+    </g>
+    <g transform="translate(452 1120) rotate(-8) scale(.5)">
+      <circle r="34" fill="#E09A33"/>
+      <circle r="34" cy="-7" fill="#FFC93C"/>
+      <circle r="22" fill="#FFE066"/>
+    </g>
+  </g>
+</svg>

@@ -4,27 +4,26 @@
    厚立体按钮 / 光泽高光 / 高饱和配色 / 弹跳动效
    ============================================================ */
 
-/* ---------- 1. 令牌 ---------- */
+/* ---------- 1. 令牌 ----------
+   颜色分两层：
+
+   · 上层是「角色令牌」—— 天空 / 棋盘 / 面板 / 立体边 / 文字 / 高光 / 阴影。
+     白天在 :root，黑夜在 html[data-theme="dark"]，全站 CSS 只引用这一层，
+     换主题就等于换这一百来个值。
+   · 下层是品牌色（金 / 粉 / 青 / 紫 / 地产分组色）。它们是对局信息的载体
+     （地产分组、玩家颜色、房子租金档位），两套主题共用、不随主题变淡。
+
+   阴影与高光用「底色三元组 + 强度倍率」表达：
+     rgba(var(--drop-rgb), calc(.3 * var(--shade-boost)))
+   白天倍率是 1，所以和改造前一模一样；黑夜把三元组换成黑 / 浅，倍率一并调整。
+   这样一百多处阴影不用各写一遍黑夜值。
+
+   主题由 <html data-theme="light|dark"> 决定，值由 JS 写死（含「跟随系统」的解析），
+   见 js/theme.js。不给属性时按白天渲染 —— 这个应用没有 JS 本来也跑不起来。 */
 :root {
-  /* 天空 */
-  --sky-1: #7FC4F0;
-  --sky-2: #3D8FD8;
-  --sky-3: #1B4E96;
+  color-scheme: light;
 
-  /* 棋盘 */
-  --board-bg-1: #FFFDF4;
-  --board-bg-2: #FFEFC9;
-  --frame-1: #FFD98A;
-  --frame-2: #E09A33;
-  --frame-edge: #A9661A;
-
-  /* 文字 */
-  --ink: #1B2A4A;
-  --ink-2: #55668A;
-  --ink-3: #8C9BB8;
-  --white: #FFFFFF;
-
-  /* 主色（各带深色立体边） */
+  /* ---------- 品牌色（两套主题共用） ---------- */
   --gold: #FFC93C;   --gold-edge: #C98500;   --gold-ink: #6B3A00;
   --pink: #FF5C8A;   --pink-edge: #C93A66;   --pink-ink: #4A0F22;
   --orange: #FF8A3D; --orange-edge: #C25A14;
@@ -38,8 +37,97 @@
   --g-d: #35C1F0;  --g-e: #A96BFF;
   --g-rail: #8FA6C4; --g-util: #FFC93C;
 
-  --line: rgba(27, 42, 74, .14);
-  --line-2: rgba(27, 42, 74, .08);
+  /* 地产 / 业主色的兜底值（数据缺失时用） */
+  --neutral: #CCC;
+  --neutral-2: #DDE6F2;
+
+  /* ---------- 天空 / 背景装饰 ---------- */
+  --sky-0: #9FD8F7;
+  --sky-1: #5FA8E4;
+  --sky-2: #2E6FBE;
+  --sky-3: #1B4E96;
+  --sun-1: #FFF6C9;
+  --sun-2: #FFD84D;
+  --sun-3: #FFB300;
+  --sun-halo-1: rgba(255, 216, 77, .26);
+  --sun-halo-2: rgba(255, 216, 77, .12);
+  --cloud-a: #FFFFFF;
+  --cloud-b: #E4F2FF;
+  --cloud-shadow: rgba(12, 40, 80, .18);
+  --rays: rgba(255, 255, 255, .18);
+  --home-art: none;              /* 首页背景插画的滤镜：白天不处理 */
+
+  /* ---------- 棋盘 ---------- */
+  --board-bg-1: #FFFDF4;
+  --board-bg-2: #FFEFC9;
+  --frame-1: #FFD98A;
+  --frame-2: #E09A33;
+  --frame-edge: #A9661A;
+  --corner-1: #FFF9E4;
+  --corner-2: #FFE9A8;
+
+  /* ---------- 面板 / 控件表面 ---------- */
+  --panel-a: #FFFFFF;   /* 立体渐变的上端 */
+  --panel-b: #EAF3FF;   /* 普通面板下端 */
+  --panel-c: #DCEBFB;   /* 按钮 / 图标按钮下端（偏蓝） */
+  --panel-d: #E4EEFB;   /* 分段器 / 次级控件下端 */
+  --panel-e: #F4F9FF;   /* 最浅的一档（地契白面） */
+  --track-a: #C9D8EA;   /* 凹陷轨迹 */
+  --track-b: #A9BDD6;
+  --dis-a: #E7EEF8;     /* 禁用面 */
+  --dis-b: #CBD9EA;
+
+  /* ---------- 立体边 / 外圈 ---------- */
+  --edge: #9DB8D8;
+  --edge-2: #B9CDE4;
+  --edge-3: #C9D9EC;
+  --ring: #FFFFFF;
+
+  /* ---------- 文字 ---------- */
+  --ink: #1B2A4A;
+  --ink-2: #55668A;
+  --ink-3: #8C9BB8;
+  --on-sky: #FFFFFF;                       /* 天空上的文字 */
+  --on-sky-dim: rgba(255, 255, 255, .8);
+  --dis-ink: #7C8DA6;
+  --link: #1B6FD0;
+  --link-active: #0E4C93;
+  --pos: #1E9E4A;                          /* 进账 / 增益 */
+  --warn: #B07A00;                         /* 入狱 / 提醒 */
+  --gold-text: #8A5A00;                    /* 金色面片上的文字 */
+  --gold-text-2: #8A6A00;
+  --title-shadow: #17447E;                 /* 首页大标题的立体描边 */
+  --num-ink: #1B4E96;                      /* 筹码上的大号金额 */
+  --card-ink: #7B4BD6;                     /* 战报里的卡牌类文字 */
+  --scrim: rgba(10, 28, 58, .55);          /* 弹层遮罩 */
+  --gold-face-a: #FFF8DC;                  /* 轮到自己时点亮的金色牌面 */
+  --gold-face-b: #FFE28A;
+  --gold-row-a: #FFF9E4;                   /* 地契售价 / 升级询问这类金色面板 */
+  --gold-row-b: #FFE9A8;
+
+  /* ---------- 高光 / 阴影的底色与强度 ---------- */
+  --white-rgb: 255, 255, 255;
+  --hair-rgb: 27, 42, 74;        /* 描边、分隔线 */
+  --shade-rgb: 27, 42, 74;       /* 凹影、文字投影 */
+  --deep-rgb: 21, 58, 108;       /* 立体边正下方的短影 */
+  --drop-rgb: 10, 30, 60;        /* 控件外投影 */
+  --night-rgb: 6, 20, 44;        /* 最深的一层投影 */
+  --gold-shade-rgb: 140, 90, 0;  /* 金色控件的凹影 */
+  --red-shade-rgb: 120, 20, 20;
+  --pink-shade-rgb: 120, 20, 50;
+  --green-shade-rgb: 20, 80, 20;
+  --purple-shade-rgb: 50, 10, 100;
+  --cyan-shade-rgb: 10, 80, 110;
+  --gloss-boost: 1;              /* 白色高光强度倍率 */
+  --shade-boost: 1;              /* 阴影强度倍率 */
+
+  /* 金色点缀：道路光线、筹码角标 */
+  --hub-ray: rgba(255, 201, 60, .3);
+  --gold-chip: rgba(255, 201, 60, .28);
+  --gold-tint: rgba(255, 201, 60, .18);
+
+  --line: rgba(var(--hair-rgb), .14);
+  --line-2: rgba(var(--hair-rgb), .08);
 
   --r-xl: 34px;
   --r-lg: 26px;
@@ -62,6 +150,86 @@
   --z-toast: 200;
 }
 
+/* ---------- 1b. 黑夜 ----------
+   不是把白天反过来灰掉，而是按「夜里的桌面」重配：天空换成深蓝夜空、太阳换成月亮、
+   棋盘换成深色绒面 + 暗金边、卡片换成深板岩面。品牌色与地产分组色原样保留 ——
+   夜里也要一眼看出这是哪一组地产、谁占着格子。 */
+html[data-theme="dark"] {
+  color-scheme: dark;
+
+  --sky-0: #33456B;
+  --sky-1: #26375A;
+  --sky-2: #17233C;
+  --sky-3: #0C1322;
+  --sun-1: #FAFCFF;
+  --sun-2: #C6D6F0;
+  --sun-3: #8CA3C6;
+  --sun-halo-1: rgba(170, 200, 255, .13);
+  --sun-halo-2: rgba(170, 200, 255, .05);
+  --cloud-a: #2E3F60;
+  --cloud-b: #23314C;
+  --cloud-shadow: rgba(0, 0, 0, .45);
+  --rays: rgba(198, 216, 248, .10);
+  /* 同一张首页插画压暗成夜景：太阳顺势变成月亮，窗灯还留一点暖色 */
+  --home-art: brightness(.4) saturate(.7);
+
+  --board-bg-1: #202B44;
+  --board-bg-2: #1A2338;
+  --frame-1: #9C7634;
+  --frame-2: #6B4D1A;
+  --frame-edge: #38270B;
+  --corner-1: #2B2A36;
+  --corner-2: #35323E;
+
+  --panel-a: #2B3956;
+  --panel-b: #1F2A42;
+  --panel-c: #22314E;
+  --panel-d: #1E2942;
+  --panel-e: #1B2436;
+  --track-a: #16203A;
+  --track-b: #111928;
+  --dis-a: #1B2438;
+  --dis-b: #131A2B;
+
+  --edge: #121A2B;
+  --edge-2: #162034;
+  --edge-3: #162034;
+  --ring: rgba(255, 255, 255, .13);
+
+  --ink: #E9EFFA;
+  --ink-2: #AEBDD6;
+  --ink-3: #7A8AA6;
+  --on-sky: #FFFFFF;
+  --on-sky-dim: rgba(255, 255, 255, .74);
+  --dis-ink: #65748E;
+  --link: #85B9FF;
+  --link-active: #B0D2FF;
+  --pos: #5BD98C;
+  --warn: #E3B354;
+  --gold-text: #F0CB72;
+  --gold-text-2: #EAC76E;
+  --title-shadow: #04070D;
+  --num-ink: #E9EFFA;
+  --card-ink: #B79BFF;
+  --scrim: rgba(0, 0, 0, .7);
+  --gold-face-a: #54430F;
+  --gold-face-b: #6E5713;
+  --gold-row-a: #3B3418;
+  --gold-row-b: #4B4019;
+
+  --hair-rgb: 186, 205, 235;
+  --shade-rgb: 0, 0, 0;
+  --deep-rgb: 0, 0, 0;
+  --drop-rgb: 0, 0, 0;
+  --night-rgb: 0, 0, 0;
+  --gloss-boost: .16;
+  --shade-boost: 1.7;
+
+  --hub-ray: rgba(255, 201, 60, .11);
+  --gold-chip: rgba(255, 201, 60, .18);
+  --gold-tint: rgba(255, 201, 60, .12);
+}
+
 /* ---------- 2. 基础 ---------- */
 *, *::before, *::after { box-sizing: border-box; }
 html { height: 100%; }
@@ -70,7 +238,7 @@ body {
   margin: 0;
   min-height: 100dvh;
   background:
-    radial-gradient(140% 70% at 50% -10%, #9FD8F7 0%, #5FA8E4 42%, #2E6FBE 74%, #1B4E96 100%);
+    radial-gradient(140% 70% at 50% -10%, var(--sky-0) 0%, var(--sky-1) 42%, var(--sky-2) 74%, var(--sky-3) 100%);
   background-attachment: fixed;
   color: var(--ink);
   font: 400 16px/1.5 var(--font-round);
@@ -105,8 +273,8 @@ button { font: inherit; color: inherit; }
   top: -60px; right: -40px;
   width: 230px; height: 230px;
   border-radius: 50%;
-  background: radial-gradient(circle at 40% 36%, #FFF6C9, #FFD84D 58%, #FFB300);
-  box-shadow: 0 0 0 22px rgba(255, 216, 77, .26), 0 0 0 52px rgba(255, 216, 77, .12);
+  background: radial-gradient(circle at 40% 36%, var(--sun-1), var(--sun-2) 58%, var(--sun-3));
+  box-shadow: 0 0 0 22px var(--sun-halo-1), 0 0 0 52px var(--sun-halo-2);
   animation: bob 8s ease-in-out infinite;
 }
 .bg__rays {
@@ -114,7 +282,7 @@ button { font: inherit; color: inherit; }
   top: -170px; right: -150px;
   width: 520px; height: 520px;
   border-radius: 50%;
-  background: repeating-conic-gradient(from 0deg, rgba(255, 255, 255, .18) 0deg 5deg, transparent 5deg 26deg);
+  background: repeating-conic-gradient(from 0deg, var(--rays) 0deg 5deg, transparent 5deg 26deg);
   animation: spin 90s linear infinite;
   mix-blend-mode: soft-light;
 }
@@ -123,8 +291,8 @@ button { font: inherit; color: inherit; }
   position: absolute;
   width: 110px; height: 38px;
   border-radius: 999px;
-  background: linear-gradient(180deg, #FFFFFF, #E4F2FF);
-  box-shadow: 0 10px 20px rgba(12, 40, 80, .18);
+  background: linear-gradient(180deg, var(--cloud-a), var(--cloud-b));
+  box-shadow: 0 10px 20px var(--cloud-shadow);
 }
 .bg__cloud::before,
 .bg__cloud::after {
@@ -163,7 +331,14 @@ button { font: inherit; color: inherit; }
   padding: max(10px, env(safe-area-inset-top)) 14px 2px;
 }
 
-.brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
+/* 左上角品牌区整块就是「回首页」按钮：清掉按钮默认外观，排版保持不变 */
+.brand {
+  display: flex; align-items: center; gap: 10px; min-width: 0;
+  margin: 0; padding: 0; border: 0; background: none;
+  color: inherit; font: inherit; text-align: left; cursor: pointer;
+  transition: transform var(--t-fast) var(--pop);
+}
+.brand:active { transform: scale(.95); }
 
 .brand__mark {
   position: relative;
@@ -173,10 +348,10 @@ button { font: inherit; color: inherit; }
   border-radius: 15px;
   background: linear-gradient(180deg, #FFE066, var(--gold));
   box-shadow:
-    inset 0 2px 0 rgba(255, 255, 255, .8),
-    inset 0 -4px 0 rgba(140, 90, 0, .22),
+    inset 0 2px 0 rgba(var(--white-rgb), calc(.8 * var(--gloss-boost))),
+    inset 0 -4px 0 rgba(var(--gold-shade-rgb), calc(.22 * var(--shade-boost))),
     0 5px 0 var(--gold-edge),
-    0 9px 16px rgba(10, 30, 60, .35);
+    0 9px 16px rgba(var(--drop-rgb), calc(.35 * var(--shade-boost)));
   color: var(--gold-ink);
   animation: bob 3.6s ease-in-out infinite;
 }
@@ -186,7 +361,7 @@ button { font: inherit; color: inherit; }
   inset: 4px 4px auto 4px;
   height: 42%;
   border-radius: 12px 12px 40% 40%;
-  background: linear-gradient(180deg, rgba(255, 255, 255, .75), rgba(255, 255, 255, 0));
+  background: linear-gradient(180deg, rgba(var(--white-rgb), calc(.75 * var(--gloss-boost))), rgba(var(--white-rgb), calc(0 * var(--gloss-boost))));
   pointer-events: none;
 }
 .brand__mark .ico { width: 24px; height: 24px; position: relative; }
@@ -197,14 +372,14 @@ button { font: inherit; color: inherit; }
   font-weight: 900;
   letter-spacing: .04em;
   line-height: 1.15;
-  color: #FFFFFF;
-  text-shadow: 0 2px 0 rgba(12, 42, 84, .8), 0 4px 8px rgba(10, 30, 60, .5);
+  color: var(--on-sky);
+  text-shadow: 0 2px 0 rgba(var(--night-rgb), calc(.8 * var(--shade-boost))), 0 4px 8px rgba(var(--drop-rgb), calc(.5 * var(--shade-boost)));
 }
 .brand__sub {
   font-size: 9px;
   font-weight: 900;
   letter-spacing: .2em;
-  color: rgba(255, 255, 255, .78);
+  color: var(--on-sky-dim);
 }
 
 .hud__tools { display: flex; gap: 9px; flex: 0 0 auto; }
@@ -215,16 +390,16 @@ button { font: inherit; color: inherit; }
   display: grid; place-items: center;
   border: 0;
   border-radius: 16px;
-  background: linear-gradient(180deg, #FFFFFF, #DCEBFB);
+  background: linear-gradient(180deg, var(--panel-a), var(--panel-c));
   color: var(--ink);
   box-shadow:
-    inset 0 2px 0 rgba(255, 255, 255, .9),
-    0 4px 0 #9DB8D8,
-    0 8px 14px rgba(10, 30, 60, .3);
+    inset 0 2px 0 rgba(var(--white-rgb), calc(.9 * var(--gloss-boost))),
+    0 4px 0 var(--edge),
+    0 8px 14px rgba(var(--drop-rgb), calc(.3 * var(--shade-boost)));
   cursor: pointer;
   transition: transform var(--t-fast) var(--pop), box-shadow var(--t-fast);
 }
-.icon-btn:active { transform: translateY(4px); box-shadow: inset 0 2px 0 rgba(255, 255, 255, .7), 0 0 0 #9DB8D8, 0 2px 5px rgba(10, 30, 60, .3); }
+.icon-btn:active { transform: translateY(4px); box-shadow: inset 0 2px 0 rgba(var(--white-rgb), calc(.7 * var(--gloss-boost))), 0 0 0 var(--edge), 0 2px 5px rgba(var(--drop-rgb), calc(.3 * var(--shade-boost))); }
 .icon-btn .ico { width: 21px; height: 21px; }
 
 /* ---------- 6. 玩家条 ---------- */
@@ -258,22 +433,22 @@ button { font: inherit; color: inherit; }
   text-align: left;
   border: 0;
   border-radius: 18px;
-  background: linear-gradient(180deg, #FFFFFF, #EAF3FF);
+  background: linear-gradient(180deg, var(--panel-a), var(--panel-b));
   box-shadow:
-    inset 0 2px 0 rgba(255, 255, 255, .95),
-    0 4px 0 rgba(21, 58, 108, .28),
-    0 9px 16px rgba(10, 30, 60, .3);
+    inset 0 2px 0 rgba(var(--white-rgb), calc(.95 * var(--gloss-boost))),
+    0 4px 0 rgba(var(--deep-rgb), calc(.28 * var(--shade-boost))),
+    0 9px 16px rgba(var(--drop-rgb), calc(.3 * var(--shade-boost)));
   cursor: pointer;
   transition: transform var(--t-fast) var(--pop), box-shadow var(--t-fast);
 }
-.chip:active { transform: translateY(4px); box-shadow: 0 0 0 rgba(21, 58, 108, .2), 0 3px 6px rgba(10, 30, 60, .25); }
+.chip:active { transform: translateY(4px); box-shadow: 0 0 0 rgba(var(--deep-rgb), calc(.2 * var(--shade-boost))), 0 3px 6px rgba(var(--drop-rgb), calc(.25 * var(--shade-boost))); }
 .chip.is-active {
-  background: linear-gradient(180deg, #FFF9E4, #FFE9A8);
+  background: linear-gradient(180deg, var(--gold-row-a), var(--gold-row-b));
   box-shadow:
-    inset 0 2px 0 rgba(255, 255, 255, .95),
+    inset 0 2px 0 rgba(var(--white-rgb), calc(.95 * var(--gloss-boost))),
     0 0 0 3px var(--gold),
     0 4px 0 var(--gold-edge),
-    0 10px 18px rgba(10, 30, 60, .35);
+    0 10px 18px rgba(var(--drop-rgb), calc(.35 * var(--shade-boost)));
   animation: wiggle 2.8s ease-in-out infinite;
 }
 .chip.is-out { opacity: .55; filter: grayscale(.6); }
@@ -284,9 +459,9 @@ button { font: inherit; color: inherit; }
   width: 34px; height: 34px;
   border-radius: 12px;
   background:
-    radial-gradient(circle at 34% 26%, rgba(255, 255, 255, .8), rgba(255, 255, 255, 0) 58%),
+    radial-gradient(circle at 34% 26%, rgba(var(--white-rgb), calc(.8 * var(--gloss-boost))), rgba(var(--white-rgb), calc(0 * var(--gloss-boost))) 58%),
     var(--c, var(--pink));
-  box-shadow: inset 0 -3px 0 rgba(27, 42, 74, .2), 0 0 0 2.5px #FFFFFF;
+  box-shadow: inset 0 -3px 0 rgba(var(--shade-rgb), calc(.2 * var(--shade-boost))), 0 0 0 2.5px var(--ring);
 }
 .chip.is-active .chip__dot { animation: breath 1.6s ease-in-out infinite; }
 
@@ -309,8 +484,8 @@ button { font: inherit; color: inherit; }
   gap: 2px;
   padding: 1px 5px 1px 4px;
   border-radius: 999px;
-  background: rgba(255, 201, 60, .28);
-  color: #8A6A00;
+  background: var(--gold-chip);
+  color: var(--gold-text-2);
   font-size: 10.5px;
   font-weight: 900;
   line-height: 1.5;
@@ -325,7 +500,7 @@ button { font: inherit; color: inherit; }
   border-radius: 999px;
   background: linear-gradient(180deg, #FFD84D, var(--gold));
   color: var(--gold-ink);
-  box-shadow: inset 0 -1.5px 0 rgba(140, 90, 0, .3);
+  box-shadow: inset 0 -1.5px 0 rgba(var(--gold-shade-rgb), calc(.3 * var(--shade-boost)));
 }
 .chip__cash {
   display: flex;
@@ -335,7 +510,7 @@ button { font: inherit; color: inherit; }
   font-variant-numeric: tabular-nums;
   font-size: 16px;
   font-weight: 900;
-  color: #1B4E96;
+  color: var(--num-ink);
   line-height: 1.15;
 }
 .chip__cash::before {
@@ -344,7 +519,7 @@ button { font: inherit; color: inherit; }
   flex: 0 0 auto;
   border-radius: 50%;
   background: radial-gradient(circle at 35% 30%, #FFF0A8, var(--gold) 60%, #D99A00);
-  box-shadow: inset 0 0 0 1.5px #FFF3C4, 0 1px 2px rgba(120, 80, 0, .4);
+  box-shadow: inset 0 0 0 1.5px #FFF3C4, 0 1px 2px rgba(var(--gold-shade-rgb), calc(.4 * var(--shade-boost)));
 }
 .chip__meta {
   grid-column: 2;
@@ -378,8 +553,8 @@ button { font: inherit; color: inherit; }
     linear-gradient(180deg, var(--frame-1), var(--frame-2)) border-box;
   box-shadow:
     0 9px 0 var(--frame-edge),
-    0 20px 34px rgba(8, 28, 60, .45),
-    inset 0 0 0 2px rgba(255, 255, 255, .55);
+    0 20px 34px rgba(var(--night-rgb), calc(.45 * var(--shade-boost))),
+    inset 0 0 0 2px rgba(var(--white-rgb), calc(.55 * var(--gloss-boost)));
   animation: boardIn 620ms var(--pop) backwards;
 }
 
@@ -401,11 +576,11 @@ button { font: inherit; color: inherit; }
   padding: calc(var(--u, 4px) * 2.2) calc(var(--u, 4px) * .4) calc(var(--u, 4px) * .4);
   border: 0;
   border-radius: calc(var(--u, 4px) * 1.6);
-  background: linear-gradient(180deg, #FFFFFF, #F2F7FF);
+  background: linear-gradient(180deg, var(--panel-a), var(--panel-b));
   box-shadow:
-    inset 0 -2px 0 rgba(27, 42, 74, .07),
-    inset 0 0 0 1.5px rgba(27, 42, 74, .09),
-    0 2px 0 rgba(27, 42, 74, .1);
+    inset 0 -2px 0 rgba(var(--shade-rgb), calc(.07 * var(--shade-boost))),
+    inset 0 0 0 1.5px rgba(var(--hair-rgb), .09),
+    0 2px 0 rgba(var(--shade-rgb), calc(.1 * var(--shade-boost)));
   text-align: center;
   cursor: pointer;
   overflow: hidden;
@@ -421,21 +596,21 @@ button { font: inherit; color: inherit; }
   position: absolute;
   top: 0; left: 0; right: 0;
   height: calc(var(--u, 4px) * 1.9);
-  background: linear-gradient(180deg, color-mix(in srgb, var(--gc, #CCC) 62%, #FFFFFF), var(--gc, #CCC));
-  box-shadow: inset 0 -1px 0 rgba(27, 42, 74, .18);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--gc, var(--neutral)) 62%, var(--panel-a)), var(--gc, var(--neutral)));
+  box-shadow: inset 0 -1px 0 rgba(var(--shade-rgb), calc(.18 * var(--shade-boost)));
 }
 .cell__bar::after {
   content: "";
   position: absolute;
   inset: 0 0 55% 0;
-  background: linear-gradient(180deg, rgba(255, 255, 255, .65), rgba(255, 255, 255, 0));
+  background: linear-gradient(180deg, rgba(var(--white-rgb), calc(.65 * var(--gloss-boost))), rgba(var(--white-rgb), calc(0 * var(--gloss-boost))));
 }
 .cell.is-mortgaged .cell__bar { filter: grayscale(.85) opacity(.7); }
 .cell.is-mortgaged::after {
   content: "";
   position: absolute;
   inset: 0;
-  background: repeating-linear-gradient(-45deg, rgba(255, 255, 255, .8) 0 3px, transparent 3px 8px);
+  background: repeating-linear-gradient(-45deg, rgba(var(--white-rgb), calc(.8 * var(--gloss-boost))) 0 3px, transparent 3px 8px);
   pointer-events: none;
 }
 
@@ -445,7 +620,7 @@ button { font: inherit; color: inherit; }
   font-size: calc(var(--u, 4px) * 3.4);
   color: var(--gc, var(--pink));
   line-height: 1;
-  filter: drop-shadow(0 1px 0 rgba(255, 255, 255, .9));
+  filter: drop-shadow(0 1px 0 rgba(var(--white-rgb), calc(.9 * var(--gloss-boost))));
 }
 .cell__icon:empty { display: none; }
 .cell__icon .ico { width: 1em; height: 1em; }
@@ -480,14 +655,14 @@ button { font: inherit; color: inherit; }
   height: calc(var(--u, 4px) * 1.5);
   border-radius: 45% 45% 30% 30%;
   background: linear-gradient(180deg, #7BE05A, var(--lime));
-  box-shadow: inset 0 -1.5px 0 rgba(20, 80, 20, .3), 0 1px 0 rgba(27, 42, 74, .15);
+  box-shadow: inset 0 -1.5px 0 rgba(var(--green-shade-rgb), calc(.3 * var(--shade-boost))), 0 1px 0 rgba(var(--shade-rgb), calc(.15 * var(--shade-boost)));
 }
 .h--hotel {
   width: calc(var(--u, 4px) * 4);
   height: calc(var(--u, 4px) * 1.8);
   border-radius: 999px;
   background: linear-gradient(180deg, #FFE066, var(--gold));
-  box-shadow: inset 0 -2px 0 rgba(140, 90, 0, .35), 0 1px 0 rgba(27, 42, 74, .2);
+  box-shadow: inset 0 -2px 0 rgba(var(--gold-shade-rgb), calc(.35 * var(--shade-boost))), 0 1px 0 rgba(var(--shade-rgb), calc(.2 * var(--shade-boost)));
 }
 
 .cell__owner {
@@ -500,19 +675,19 @@ button { font: inherit; color: inherit; }
   place-items: center;
   border-radius: 50%;
   background:
-    radial-gradient(circle at 34% 26%, rgba(255, 255, 255, .75), rgba(255, 255, 255, 0) 60%),
-    var(--oc, #DDE6F2);
+    radial-gradient(circle at 34% 26%, rgba(var(--white-rgb), calc(.75 * var(--gloss-boost))), rgba(var(--white-rgb), calc(0 * var(--gloss-boost))) 60%),
+    var(--oc, var(--neutral-2));
   color: #FFFFFF;
   font-size: calc(var(--u, 4px) * 1.9);
   font-weight: 900;
   line-height: 1;
-  text-shadow: 0 1px 1px rgba(27, 42, 74, .55);
-  box-shadow: 0 0 0 calc(var(--u, 4px) * .4) #FFFFFF, 0 calc(var(--u, 4px) * .3) calc(var(--u, 4px) * .6) rgba(27, 42, 74, .35);
+  text-shadow: 0 1px 1px rgba(var(--shade-rgb), calc(.55 * var(--shade-boost)));
+  box-shadow: 0 0 0 calc(var(--u, 4px) * .4) var(--ring), 0 calc(var(--u, 4px) * .3) calc(var(--u, 4px) * .6) rgba(var(--shade-rgb), calc(.35 * var(--shade-boost)));
 }
 .cell__owner:empty { display: none; }
-.cell.is-owned { background: linear-gradient(180deg, #FFFFFF, color-mix(in srgb, var(--oc, #DDE6F2) 22%, #FFFFFF)); }
+.cell.is-owned { background: linear-gradient(180deg, var(--panel-a), color-mix(in srgb, var(--oc, var(--neutral-2)) 22%, var(--panel-a))); }
 
-.cell--corner { background: linear-gradient(180deg, #FFF9E4, #FFE9A8); }
+.cell--corner { background: linear-gradient(180deg, var(--corner-1), var(--corner-2)); }
 .cell--corner .cell__bar { height: calc(var(--u, 4px) * 2.2); }
 
 /* ---------- 8. 中心枢纽 ---------- */
@@ -524,17 +699,17 @@ button { font: inherit; color: inherit; }
   overflow: hidden;
   border-radius: var(--r-lg);
   background:
-    radial-gradient(circle at 50% 12%, rgba(255, 255, 255, .95), rgba(255, 255, 255, 0) 60%),
-    linear-gradient(180deg, #FFFFFF, #EAF3FF);
+    radial-gradient(circle at 50% 12%, rgba(var(--white-rgb), calc(.95 * var(--gloss-boost))), rgba(var(--white-rgb), calc(0 * var(--gloss-boost))) 60%),
+    linear-gradient(180deg, var(--panel-a), var(--panel-b));
   box-shadow:
-    inset 0 0 0 3px rgba(255, 255, 255, .9),
-    inset 0 0 0 4.5px rgba(27, 42, 74, .08),
-    0 2px 0 rgba(27, 42, 74, .06);
+    inset 0 0 0 3px rgba(var(--white-rgb), calc(.9 * var(--gloss-boost))),
+    inset 0 0 0 4.5px rgba(var(--hair-rgb), .08),
+    0 2px 0 rgba(var(--shade-rgb), calc(.06 * var(--shade-boost)));
 }
 .hub__rays {
   position: absolute;
   inset: -25%;
-  background: repeating-conic-gradient(from 0deg, rgba(255, 201, 60, .3) 0deg 4deg, transparent 4deg 22deg);
+  background: repeating-conic-gradient(from 0deg, var(--hub-ray) 0deg 4deg, transparent 4deg 22deg);
   animation: spin 70s linear infinite;
 }
 
@@ -546,11 +721,11 @@ button { font: inherit; color: inherit; }
   gap: calc(var(--u, 4px) * 1.4);
   padding: calc(var(--u, 4px) * 2.4) calc(var(--u, 4px) * 3.2) calc(var(--u, 4px) * 2.8);
   border-radius: calc(var(--u, 4px) * 4.5);
-  background: linear-gradient(180deg, #FFFFFF, #F0F6FF);
+  background: linear-gradient(180deg, var(--panel-a), var(--panel-b));
   box-shadow:
-    inset 0 2px 0 rgba(255, 255, 255, .95),
-    0 calc(var(--u, 4px) * .8) 0 rgba(21, 58, 108, .22),
-    0 calc(var(--u, 4px) * 2) calc(var(--u, 4px) * 3) rgba(10, 30, 60, .25);
+    inset 0 2px 0 rgba(var(--white-rgb), calc(.95 * var(--gloss-boost))),
+    0 calc(var(--u, 4px) * .8) 0 rgba(var(--deep-rgb), calc(.22 * var(--shade-boost))),
+    0 calc(var(--u, 4px) * 2) calc(var(--u, 4px) * 3) rgba(var(--drop-rgb), calc(.25 * var(--shade-boost)));
   animation: bob 4s ease-in-out infinite;
 }
 
@@ -572,20 +747,20 @@ button { font: inherit; color: inherit; }
   height: calc(var(--u, 4px) * 13);
   padding: 13%;
   gap: 8%;
-  background: linear-gradient(160deg, #FFFFFF, #E9F2FF);
+  background: linear-gradient(160deg, var(--panel-a), var(--panel-b));
   border-radius: calc(var(--u, 4px) * 3.4);
   box-shadow:
-    inset 0 calc(var(--u, 4px) * -.9) 0 rgba(27, 42, 74, .1),
-    inset 0 calc(var(--u, 4px) * .5) 0 rgba(255, 255, 255, .9),
-    0 calc(var(--u, 4px) * .7) 0 rgba(21, 58, 108, .25),
-    0 calc(var(--u, 4px) * 1.4) calc(var(--u, 4px) * 2) rgba(10, 30, 60, .25);
+    inset 0 calc(var(--u, 4px) * -.9) 0 rgba(var(--shade-rgb), calc(.1 * var(--shade-boost))),
+    inset 0 calc(var(--u, 4px) * .5) 0 rgba(var(--white-rgb), calc(.9 * var(--gloss-boost))),
+    0 calc(var(--u, 4px) * .7) 0 rgba(var(--deep-rgb), calc(.25 * var(--shade-boost))),
+    0 calc(var(--u, 4px) * 1.4) calc(var(--u, 4px) * 2) rgba(var(--drop-rgb), calc(.25 * var(--shade-boost)));
 }
 .hub__dice.is-rolling .die { animation: tumble 320ms var(--soft) infinite; }
 .hub__dice.is-settled .die { animation: pop 400ms var(--pop); }
 .pip { border-radius: 50%; background: transparent; }
 .pip.on {
   background: radial-gradient(circle at 35% 30%, #FF8FAE, var(--pink) 65%);
-  box-shadow: inset 0 -1px 1px rgba(120, 20, 50, .35);
+  box-shadow: inset 0 -1px 1px rgba(var(--pink-shade-rgb), calc(.35 * var(--shade-boost)));
 }
 
 .hub__who {
@@ -641,17 +816,17 @@ button { font: inherit; color: inherit; }
   width: 100%; height: 100%;
   border-radius: 50% 50% 46% 46%;
   background:
-    radial-gradient(circle at 32% 24%, rgba(255, 255, 255, .9), rgba(255, 255, 255, 0) 56%),
+    radial-gradient(circle at 32% 24%, rgba(var(--white-rgb), calc(.9 * var(--gloss-boost))), rgba(var(--white-rgb), calc(0 * var(--gloss-boost))) 56%),
     var(--c, var(--pink));
   color: #FFFFFF;
   font-size: calc(var(--u, 4px) * 3.1);
   font-weight: 900;
-  text-shadow: 0 1.5px 0 rgba(27, 42, 74, .6);
+  text-shadow: 0 1.5px 0 rgba(var(--shade-rgb), calc(.6 * var(--shade-boost)));
   box-shadow:
-    0 0 0 calc(var(--u, 4px) * .55) #FFFFFF,
-    inset 0 calc(var(--u, 4px) * -.9) 0 rgba(27, 42, 74, .22),
-    0 calc(var(--u, 4px) * .7) 0 rgba(21, 58, 108, .35),
-    0 calc(var(--u, 4px) * 1.2) calc(var(--u, 4px) * 1.6) rgba(10, 30, 60, .35);
+    0 0 0 calc(var(--u, 4px) * .55) var(--ring),
+    inset 0 calc(var(--u, 4px) * -.9) 0 rgba(var(--shade-rgb), calc(.22 * var(--shade-boost))),
+    0 calc(var(--u, 4px) * .7) 0 rgba(var(--deep-rgb), calc(.35 * var(--shade-boost))),
+    0 calc(var(--u, 4px) * 1.2) calc(var(--u, 4px) * 1.6) rgba(var(--drop-rgb), calc(.35 * var(--shade-boost)));
 }
 .token.is-hop .token__face { animation: hop 260ms var(--pop); }
 .token.is-active .token__face { animation: breath 1.7s ease-in-out infinite; }
@@ -678,15 +853,15 @@ button { font: inherit; color: inherit; }
   color: var(--gold-ink);
   font-size: calc(var(--u, 4px) * 2.5);
   font-weight: 900;
-  text-shadow: 0 1px 0 rgba(255, 255, 255, .7);
-  box-shadow: 0 0 0 calc(var(--u, 4px) * .8) #FFFFFF, 0 calc(var(--u, 4px) * .6) 0 var(--gold-edge), 0 calc(var(--u, 4px) * 1.4) calc(var(--u, 4px) * 2) rgba(10, 30, 60, .4);
+  text-shadow: 0 1px 0 rgba(var(--white-rgb), calc(.7 * var(--gloss-boost)));
+  box-shadow: 0 0 0 calc(var(--u, 4px) * .8) var(--ring), 0 calc(var(--u, 4px) * .6) 0 var(--gold-edge), 0 calc(var(--u, 4px) * 1.4) calc(var(--u, 4px) * 2) rgba(var(--drop-rgb), calc(.4 * var(--shade-boost)));
   animation: stampPop 900ms var(--pop) forwards;
 }
 .stamp.is-out { animation: stampOut 500ms var(--soft) forwards; }
 .stamp__ring {
   position: absolute;
   inset: calc(var(--u, 4px) * -2);
-  border: calc(var(--u, 4px) * .7) solid #FFFFFF;
+  border: calc(var(--u, 4px) * .7) solid var(--ring);
   border-radius: 50%;
   animation: ring 800ms ease-out 1;
 }
@@ -699,9 +874,9 @@ button { font: inherit; color: inherit; }
   font-size: calc(var(--u, 4px) * 3.4);
   color: var(--lime);
   text-shadow:
-    0 2px 0 rgba(27, 42, 74, .9), 0 -2px 0 rgba(27, 42, 74, .9),
-    2px 0 0 rgba(27, 42, 74, .9), -2px 0 0 rgba(27, 42, 74, .9),
-    0 4px 8px rgba(10, 30, 60, .5);
+    0 2px 0 rgba(var(--shade-rgb), calc(.9 * var(--shade-boost))), 0 -2px 0 rgba(var(--shade-rgb), calc(.9 * var(--shade-boost))),
+    2px 0 0 rgba(var(--shade-rgb), calc(.9 * var(--shade-boost))), -2px 0 0 rgba(var(--shade-rgb), calc(.9 * var(--shade-boost))),
+    0 4px 8px rgba(var(--drop-rgb), calc(.5 * var(--shade-boost)));
   white-space: nowrap;
   animation: floatPop 1250ms var(--pop) forwards;
 }
@@ -712,7 +887,7 @@ button { font: inherit; color: inherit; }
   width: 10px; height: 10px;
   margin: -5px 0 0 -5px;
   border-radius: 3px;
-  box-shadow: 0 1px 2px rgba(10, 30, 60, .3);
+  box-shadow: 0 1px 2px rgba(var(--drop-rgb), calc(.3 * var(--shade-boost)));
   animation: confettiFly var(--d, .8s) var(--soft) forwards;
 }
 
@@ -723,7 +898,7 @@ button { font: inherit; color: inherit; }
   margin: -11px 0 0 -11px;
   border-radius: 50%;
   background: radial-gradient(circle at 35% 30%, #FFF6C9, var(--gold) 58%, #D99A00);
-  box-shadow: inset 0 0 0 2px #FFF3C4, 0 3px 6px rgba(120, 80, 0, .45);
+  box-shadow: inset 0 0 0 2px #FFF3C4, 0 3px 6px rgba(var(--gold-shade-rgb), calc(.45 * var(--shade-boost)));
   animation: coinFly 720ms var(--soft) forwards;
 }
 
@@ -747,11 +922,11 @@ button { font: inherit; color: inherit; }
   padding: 4px 2px;
   border: 0;
   border-radius: 10px;
-  background: linear-gradient(180deg, #FFFFFF, #F1F7FF);
+  background: linear-gradient(180deg, var(--panel-a), var(--panel-b));
   color: var(--ink);
   font: inherit;
   cursor: pointer;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .9), 0 1px 3px rgba(21, 58, 108, .18);
+  box-shadow: inset 0 0 0 1px rgba(var(--white-rgb), calc(.9 * var(--gloss-boost))), 0 1px 3px rgba(var(--deep-rgb), calc(.18 * var(--shade-boost)));
   transition: transform var(--t-fast) var(--pop), box-shadow var(--t-fast);
 }
 .hand__card:active { transform: scale(.93); }
@@ -767,18 +942,18 @@ button { font: inherit; color: inherit; }
 }
 /* 空格位：同尺寸的虚线框，不参与点击 */
 .hand__card.is-empty {
-  border: 2px dashed rgba(27, 42, 74, .18);
+  border: 2px dashed rgba(var(--hair-rgb), .18);
   background: transparent;
   box-shadow: none;
   cursor: default;
 }
 /* 轮到自己、还没掷骰：有牌的槽位点亮，点一下即可出牌 */
 .hand__card.is-ready {
-  background: linear-gradient(180deg, #FFF8DC, #FFE28A);
-  box-shadow: inset 0 0 0 1.5px rgba(255, 255, 255, .9), 0 2px 7px rgba(160, 100, 0, .24);
+  background: linear-gradient(180deg, var(--gold-face-a), var(--gold-face-b));
+  box-shadow: inset 0 0 0 1.5px rgba(var(--white-rgb), calc(.9 * var(--gloss-boost))), 0 2px 7px rgba(var(--gold-shade-rgb), calc(.24 * var(--shade-boost)));
   animation: handReady 1.9s ease-in-out infinite;
 }
-.hand__card.is-ready .hand__ico { color: var(--gold-ink); }
+.hand__card.is-ready .hand__ico { color: var(--gold-text); }
 @keyframes handReady {
   0%, 100% { transform: translateY(0); }
   50% { transform: translateY(-3px); }
@@ -792,11 +967,11 @@ button { font: inherit; color: inherit; }
   margin: 0 14px 8px;
   padding: 8px 12px;
   border-radius: var(--r-lg);
-  background: linear-gradient(180deg, #FFFFFF, #EAF3FF);
+  background: linear-gradient(180deg, var(--panel-a), var(--panel-b));
   box-shadow:
-    inset 0 2px 0 rgba(255, 255, 255, .95),
-    0 4px 0 rgba(21, 58, 108, .22),
-    0 10px 18px rgba(10, 30, 60, .28);
+    inset 0 2px 0 rgba(var(--white-rgb), calc(.95 * var(--gloss-boost))),
+    0 4px 0 rgba(var(--deep-rgb), calc(.22 * var(--shade-boost))),
+    0 10px 18px rgba(var(--drop-rgb), calc(.28 * var(--shade-boost)));
 }
 .ticker__now {
   /* 故意单行截断：棋盘边长预算把这一条当定高来算，换行会让棋盘跟着抖 */
@@ -821,21 +996,21 @@ button { font: inherit; color: inherit; }
   padding: 4px 11px;
   border: 0;
   border-radius: 999px;
-  background: linear-gradient(180deg, #FFFFFF, #DCEBFB);
+  background: linear-gradient(180deg, var(--panel-a), var(--panel-c));
   color: var(--ink-2);
   font-size: 11.5px;
   font-weight: 900;
   cursor: pointer;
-  box-shadow: inset 0 1.5px 0 rgba(255, 255, 255, .95), 0 2px 0 #B9CDE4;
+  box-shadow: inset 0 1.5px 0 rgba(var(--white-rgb), calc(.95 * var(--gloss-boost))), 0 2px 0 var(--edge-2);
 }
-.ticker__more:active { transform: translateY(2px); box-shadow: inset 0 1.5px 0 rgba(255, 255, 255, .8), 0 0 0 #B9CDE4; }
+.ticker__more:active { transform: translateY(2px); box-shadow: inset 0 1.5px 0 rgba(var(--white-rgb), calc(.8 * var(--gloss-boost))), 0 0 0 var(--edge-2); }
 
-.ticker__item--money, .ticker__item--buy { color: #1E9E4A; }
+.ticker__item--money, .ticker__item--buy { color: var(--pos); }
 .ticker__item--rent, .ticker__item--pay, .ticker__item--danger { color: #E03E3E; }
-.ticker__item--jail { color: #B07A00; }
-.ticker__item--card { color: #7B4BD6; }
+.ticker__item--jail { color: var(--warn); }
+.ticker__item--card { color: var(--card-ink); }
 .ticker__item--dice { color: var(--ink-2); }
-.ticker__item--build { color: #1E9E4A; }
+.ticker__item--build { color: var(--pos); }
 
 /* ---------- 12. 操作坞 ---------- */
 .dock {
@@ -856,14 +1031,14 @@ button { font: inherit; color: inherit; }
   padding: 0 12px;
   border: 0;
   border-radius: 999px;
-  background: linear-gradient(180deg, #FFFFFF, #DCEBFB);
+  background: linear-gradient(180deg, var(--panel-a), var(--panel-c));
   color: var(--ink);
   font-size: 14px;
   font-weight: 900;
   box-shadow:
-    inset 0 2px 0 rgba(255, 255, 255, .95),
-    0 5px 0 #9DB8D8,
-    0 10px 18px rgba(10, 30, 60, .32);
+    inset 0 2px 0 rgba(var(--white-rgb), calc(.95 * var(--gloss-boost))),
+    0 5px 0 var(--edge),
+    0 10px 18px rgba(var(--drop-rgb), calc(.32 * var(--shade-boost)));
   cursor: pointer;
   overflow: hidden;
   transition: transform var(--t-fast) var(--pop), box-shadow var(--t-fast);
@@ -874,10 +1049,10 @@ button { font: inherit; color: inherit; }
   inset: 3px 12px auto 12px;
   height: 42%;
   border-radius: 999px;
-  background: linear-gradient(180deg, rgba(255, 255, 255, .8), rgba(255, 255, 255, 0));
+  background: linear-gradient(180deg, rgba(var(--white-rgb), calc(.8 * var(--gloss-boost))), rgba(var(--white-rgb), calc(0 * var(--gloss-boost))));
   pointer-events: none;
 }
-.btn:active { transform: translateY(5px); box-shadow: inset 0 2px 0 rgba(255, 255, 255, .7), 0 0 0 #9DB8D8, 0 3px 8px rgba(10, 30, 60, .3); }
+.btn:active { transform: translateY(5px); box-shadow: inset 0 2px 0 rgba(var(--white-rgb), calc(.7 * var(--gloss-boost))), 0 0 0 var(--edge), 0 3px 8px rgba(var(--drop-rgb), calc(.3 * var(--shade-boost))); }
 .btn > * { position: relative; }
 .btn .ico { width: 18px; height: 18px; }
 
@@ -885,26 +1060,26 @@ button { font: inherit; color: inherit; }
   background: linear-gradient(180deg, #FFE066, var(--gold));
   color: var(--gold-ink);
   box-shadow:
-    inset 0 2px 0 rgba(255, 255, 255, .85),
-    inset 0 -4px 0 rgba(140, 90, 0, .2),
+    inset 0 2px 0 rgba(var(--white-rgb), calc(.85 * var(--gloss-boost))),
+    inset 0 -4px 0 rgba(var(--gold-shade-rgb), calc(.2 * var(--shade-boost))),
     0 6px 0 var(--gold-edge),
-    0 12px 22px rgba(10, 30, 60, .4);
+    0 12px 22px rgba(var(--drop-rgb), calc(.4 * var(--shade-boost)));
 }
-.btn--primary:active { box-shadow: inset 0 2px 0 rgba(255, 255, 255, .7), 0 1px 0 var(--gold-edge), 0 3px 8px rgba(10, 30, 60, .3); }
+.btn--primary:active { box-shadow: inset 0 2px 0 rgba(var(--white-rgb), calc(.7 * var(--gloss-boost))), 0 1px 0 var(--gold-edge), 0 3px 8px rgba(var(--drop-rgb), calc(.3 * var(--shade-boost))); }
 
-.btn--ghost { background: linear-gradient(180deg, #FFFFFF, #DCEBFB); }
+.btn--ghost { background: linear-gradient(180deg, var(--panel-a), var(--panel-c)); }
 
 .btn--danger {
   background: linear-gradient(180deg, #FF8A8A, var(--red));
   color: #FFFFFF;
-  text-shadow: 0 2px 0 rgba(120, 20, 20, .45);
+  text-shadow: 0 2px 0 rgba(var(--red-shade-rgb), calc(.45 * var(--shade-boost)));
   box-shadow:
-    inset 0 2px 0 rgba(255, 255, 255, .55),
-    inset 0 -4px 0 rgba(120, 20, 20, .25),
+    inset 0 2px 0 rgba(var(--white-rgb), calc(.55 * var(--gloss-boost))),
+    inset 0 -4px 0 rgba(var(--red-shade-rgb), calc(.25 * var(--shade-boost))),
     0 6px 0 var(--red-edge),
-    0 12px 22px rgba(10, 30, 60, .4);
+    0 12px 22px rgba(var(--drop-rgb), calc(.4 * var(--shade-boost)));
 }
-.btn--danger:active { box-shadow: inset 0 2px 0 rgba(255, 255, 255, .45), 0 1px 0 var(--red-edge), 0 3px 8px rgba(10, 30, 60, .3); }
+.btn--danger:active { box-shadow: inset 0 2px 0 rgba(var(--white-rgb), calc(.45 * var(--gloss-boost))), 0 1px 0 var(--red-edge), 0 3px 8px rgba(var(--drop-rgb), calc(.3 * var(--shade-boost))); }
 
 .btn:disabled, .btn.is-disabled {
   opacity: .5;
@@ -917,10 +1092,10 @@ button { font: inherit; color: inherit; }
 .dock__main .btn__label { font-size: 17px; letter-spacing: .02em; white-space: nowrap; }
 .dock__main .ico { width: 22px; height: 22px; }
 .dock__main.is-waiting {
-  background: linear-gradient(180deg, #E7EEF8, #CBD9EA);
-  color: #7C8DA6;
+  background: linear-gradient(180deg, var(--dis-a), var(--dis-b));
+  color: var(--dis-ink);
   text-shadow: none;
-  box-shadow: inset 0 2px 0 rgba(255, 255, 255, .7), 0 2px 0 rgba(21, 58, 108, .18);
+  box-shadow: inset 0 2px 0 rgba(var(--white-rgb), calc(.7 * var(--gloss-boost))), 0 2px 0 rgba(var(--deep-rgb), calc(.18 * var(--shade-boost)));
   transform: translateY(4px);
 }
 .dock__side { flex-direction: column; gap: 1px; font-size: 11.5px; border-radius: 20px; min-width: 0; }
@@ -935,7 +1110,7 @@ button { font: inherit; color: inherit; }
 .scrim {
   position: absolute;
   inset: 0;
-  background: rgba(10, 28, 58, .55);
+  background: var(--scrim);
   backdrop-filter: blur(5px);
   animation: fade var(--t) var(--soft);
 }
@@ -948,9 +1123,9 @@ button { font: inherit; color: inherit; }
   max-height: 88dvh;
   /* 底部多留一点，放得下操作按钮的立体边与投影 */
   padding: 6px 0 max(22px, calc(env(safe-area-inset-bottom) + 12px));
-  background: linear-gradient(180deg, #FFFFFF, #EAF3FF);
+  background: linear-gradient(180deg, var(--panel-a), var(--panel-b));
   border-radius: var(--r-xl) var(--r-xl) 0 0;
-  box-shadow: 0 -10px 0 rgba(21, 58, 108, .18), 0 -22px 44px -10px rgba(6, 22, 48, .6);
+  box-shadow: 0 -10px 0 rgba(var(--deep-rgb), calc(.18 * var(--shade-boost))), 0 -22px 44px -10px rgba(var(--night-rgb), calc(.6 * var(--shade-boost)));
   transform: translateY(104%);
   transition: transform 380ms var(--pop);
 }
@@ -961,7 +1136,7 @@ button { font: inherit; color: inherit; }
   width: 50px; height: 6px;
   margin: 4px auto 8px;
   border-radius: 999px;
-  background: linear-gradient(180deg, #C9D8EA, #A9BDD6);
+  background: linear-gradient(180deg, var(--track-a), var(--track-b));
 }
 
 .sheet__close {
@@ -969,15 +1144,15 @@ button { font: inherit; color: inherit; }
   top: 10px; right: 10px;
   width: 44px; height: 44px;
   display: grid; place-items: center;
-  background: linear-gradient(180deg, #FFFFFF, #DCEBFB);
+  background: linear-gradient(180deg, var(--panel-a), var(--panel-c));
   border: 0;
   border-radius: 15px;
   color: var(--ink-2);
-  box-shadow: inset 0 2px 0 rgba(255, 255, 255, .95), 0 4px 0 #9DB8D8, 0 8px 14px rgba(10, 30, 60, .28);
+  box-shadow: inset 0 2px 0 rgba(var(--white-rgb), calc(.95 * var(--gloss-boost))), 0 4px 0 var(--edge), 0 8px 14px rgba(var(--drop-rgb), calc(.28 * var(--shade-boost)));
   cursor: pointer;
   transition: transform var(--t-fast) var(--pop), box-shadow var(--t-fast);
 }
-.sheet__close:active { transform: translateY(4px); box-shadow: 0 0 0 #9DB8D8, 0 2px 4px rgba(10, 30, 60, .25); }
+.sheet__close:active { transform: translateY(4px); box-shadow: 0 0 0 var(--edge), 0 2px 4px rgba(var(--drop-rgb), calc(.25 * var(--shade-boost))); }
 .sheet__close .ico { width: 20px; height: 20px; }
 
 .sheet__head { padding: 0 20px 10px; }
@@ -1018,11 +1193,11 @@ button { font: inherit; color: inherit; }
   position: relative;
   padding: 0 0 16px;
   border-radius: var(--r-lg);
-  background: linear-gradient(180deg, #FFFFFF, #F4F9FF);
+  background: linear-gradient(180deg, var(--panel-a), var(--panel-e));
   box-shadow:
-    inset 0 0 0 2px #FFFFFF,
-    0 5px 0 rgba(21, 58, 108, .22),
-    0 14px 26px -10px rgba(10, 30, 60, .4);
+    inset 0 0 0 2px var(--ring),
+    0 5px 0 rgba(var(--deep-rgb), calc(.22 * var(--shade-boost))),
+    0 14px 26px -10px rgba(var(--drop-rgb), calc(.4 * var(--shade-boost)));
   overflow: hidden;
   animation: deedFlip 480ms var(--pop);
 }
@@ -1035,21 +1210,21 @@ button { font: inherit; color: inherit; }
   gap: 8px;
   padding: 11px 16px;
   background:
-    radial-gradient(circle at 50% 0%, rgba(255, 255, 255, .55), rgba(255, 255, 255, 0) 70%),
-    linear-gradient(180deg, color-mix(in srgb, var(--gc, #CCC) 70%, #FFFFFF), var(--gc, #CCC));
+    radial-gradient(circle at 50% 0%, rgba(var(--white-rgb), calc(.55 * var(--gloss-boost))), rgba(var(--white-rgb), calc(0 * var(--gloss-boost))) 70%),
+    linear-gradient(180deg, color-mix(in srgb, var(--gc, var(--neutral)) 70%, var(--panel-a)), var(--gc, var(--neutral)));
   color: #FFFFFF;
   font-size: 11.5px;
   font-weight: 900;
   letter-spacing: .12em;
   text-transform: uppercase;
-  text-shadow: 0 2px 0 rgba(27, 42, 74, .45);
-  box-shadow: inset 0 -3px 0 rgba(27, 42, 74, .18);
+  text-shadow: 0 2px 0 rgba(var(--shade-rgb), calc(.45 * var(--shade-boost)));
+  box-shadow: inset 0 -3px 0 rgba(var(--shade-rgb), calc(.18 * var(--shade-boost)));
 }
 .deed__chip {
   width: 15px; height: 15px;
   border-radius: 5px;
-  background: #FFFFFF;
-  box-shadow: inset 0 -2px 0 rgba(27, 42, 74, .2);
+  background: var(--panel-a);
+  box-shadow: inset 0 -2px 0 rgba(var(--shade-rgb), calc(.2 * var(--shade-boost)));
 }
 
 .deed__name {
@@ -1073,14 +1248,14 @@ button { font: inherit; color: inherit; }
   margin: 0 16px;
   padding: 9px 12px;
   border-radius: 12px;
-  background: linear-gradient(180deg, #FFF9E4, #FFE9A8);
-  box-shadow: inset 0 0 0 1.5px rgba(140, 90, 0, .18);
+  background: linear-gradient(180deg, var(--gold-row-a), var(--gold-row-b));
+  box-shadow: inset 0 0 0 1.5px rgba(var(--gold-shade-rgb), calc(.18 * var(--shade-boost)));
   font-size: 13px;
   font-weight: 800;
-  color: #8A5A00;
+  color: var(--gold-text);
 }
-.deed__price b { font-size: 19px; color: var(--gold-ink); }
-.deed__price--sub { background: linear-gradient(180deg, #F3F8FF, #E4EEFB); color: var(--ink-2); box-shadow: inset 0 0 0 1.5px rgba(27, 42, 74, .1); margin-top: 6px; }
+.deed__price b { font-size: 19px; color: var(--gold-text); }
+.deed__price--sub { background: linear-gradient(180deg, var(--panel-e), var(--panel-d)); color: var(--ink-2); box-shadow: inset 0 0 0 1.5px rgba(var(--hair-rgb), .1); margin-top: 6px; }
 .deed__price--sub b { font-size: 15px; color: var(--ink); }
 
 .deed__table { width: calc(100% - 32px); margin: 12px 16px 0; border-collapse: collapse; font-size: 13.5px; }
@@ -1091,7 +1266,7 @@ button { font: inherit; color: inherit; }
   color: var(--ink-2);
 }
 .deed__table td:last-child { text-align: right; font-weight: 900; color: var(--ink); }
-.deed__table tr.double td:last-child { color: #1E9E4A; }
+.deed__table tr.double td:last-child { color: var(--pos); }
 .deed__table tr.hotel td:last-child { color: var(--pink); }
 
 .deed__desc { margin: 12px 16px 0; font-size: 13px; font-weight: 800; line-height: 1.6; color: var(--ink-2); }
@@ -1111,7 +1286,7 @@ button { font: inherit; color: inherit; }
   width: 14px; height: 14px;
   border-radius: 50%;
   background: var(--oc);
-  box-shadow: inset 0 -2px 0 rgba(27, 42, 74, .2), 0 0 0 2px #FFFFFF;
+  box-shadow: inset 0 -2px 0 rgba(var(--shade-rgb), calc(.2 * var(--shade-boost))), 0 0 0 2px var(--ring);
 }
 .deed__note { margin: 9px 16px 0; font-size: 11.5px; font-weight: 800; color: var(--ink-2); }
 
@@ -1127,7 +1302,7 @@ button { font: inherit; color: inherit; }
   padding: 0;
   border: 0;
   background: none;
-  color: #1B6FD0;
+  color: var(--link);
   font-family: inherit;
   font-size: 12.5px;
   font-weight: 900;
@@ -1138,7 +1313,7 @@ button { font: inherit; color: inherit; }
   cursor: pointer;
 }
 .doclink i { font-style: normal; font-size: 14px; line-height: 1; }
-.doclink:active { color: #0E4C93; }
+.doclink:active { color: var(--link-active); }
 .start__cards { margin: 12px 0 0; text-align: center; }
 
 .notice {
@@ -1146,8 +1321,8 @@ button { font: inherit; color: inherit; }
   gap: 12px;
   padding: 14px;
   border-radius: var(--r-md);
-  background: linear-gradient(180deg, #FFFFFF, #EFF6FF);
-  box-shadow: inset 0 2px 0 rgba(255, 255, 255, .95), 0 4px 0 rgba(21, 58, 108, .18), 0 10px 18px rgba(10, 30, 60, .2);
+  background: linear-gradient(180deg, var(--panel-a), var(--panel-b));
+  box-shadow: inset 0 2px 0 rgba(var(--white-rgb), calc(.95 * var(--gloss-boost))), 0 4px 0 rgba(var(--deep-rgb), calc(.18 * var(--shade-boost))), 0 10px 18px rgba(var(--drop-rgb), calc(.2 * var(--shade-boost)));
   font-size: 13px;
 }
 .notice .ico { width: 22px; height: 22px; color: var(--gold); margin-top: 2px; }
@@ -1164,8 +1339,8 @@ button { font: inherit; color: inherit; }
   gap: 10px;
   padding: 11px 14px;
   border-radius: 14px;
-  background: linear-gradient(180deg, #FFFFFF, #EFF6FF);
-  box-shadow: inset 0 2px 0 rgba(255, 255, 255, .95), 0 3px 0 rgba(21, 58, 108, .16);
+  background: linear-gradient(180deg, var(--panel-a), var(--panel-b));
+  box-shadow: inset 0 2px 0 rgba(var(--white-rgb), calc(.95 * var(--gloss-boost))), 0 3px 0 rgba(var(--deep-rgb), calc(.16 * var(--shade-boost)));
   font-size: 13px;
   font-weight: 800;
   color: var(--ink-2);
@@ -1187,7 +1362,7 @@ button { font: inherit; color: inherit; }
 }
 .raise__name, .assets__name { display: flex; align-items: center; gap: 8px; }
 .raise__acts, .assets__acts { display: flex; gap: 7px; flex-wrap: wrap; }
-.dot-h { color: #1E9E4A; font-style: normal; font-size: 12px; font-weight: 900; }
+.dot-h { color: var(--pos); font-style: normal; font-size: 12px; font-weight: 900; }
 .tag {
   font-style: normal;
   font-size: 10.5px;
@@ -1196,30 +1371,30 @@ button { font: inherit; color: inherit; }
   background: linear-gradient(180deg, #FF8A8A, var(--red));
   border-radius: 999px;
   padding: 1px 8px;
-  text-shadow: 0 1px 0 rgba(120, 20, 20, .4);
-  box-shadow: inset 0 -2px 0 rgba(120, 20, 20, .25);
+  text-shadow: 0 1px 0 rgba(var(--red-shade-rgb), calc(.4 * var(--shade-boost)));
+  box-shadow: inset 0 -2px 0 rgba(var(--red-shade-rgb), calc(.25 * var(--shade-boost)));
 }
-.swatch { width: 14px; height: 14px; border-radius: 5px; background: var(--gc); box-shadow: inset 0 -2px 0 rgba(27, 42, 74, .18), 0 0 0 1.5px #FFFFFF; }
+.swatch { width: 14px; height: 14px; border-radius: 5px; background: var(--gc); box-shadow: inset 0 -2px 0 rgba(var(--shade-rgb), calc(.18 * var(--shade-boost))), 0 0 0 1.5px var(--ring); }
 
 .mini {
   min-height: 44px;
   padding: 0 14px;
   border: 0;
   border-radius: 999px;
-  background: linear-gradient(180deg, #FFFFFF, #DCEBFB);
+  background: linear-gradient(180deg, var(--panel-a), var(--panel-c));
   color: var(--ink);
   font-size: 12.5px;
   font-weight: 900;
-  box-shadow: inset 0 2px 0 rgba(255, 255, 255, .95), 0 4px 0 #9DB8D8;
+  box-shadow: inset 0 2px 0 rgba(var(--white-rgb), calc(.95 * var(--gloss-boost))), 0 4px 0 var(--edge);
   cursor: pointer;
   transition: transform var(--t-fast) var(--pop), box-shadow var(--t-fast);
 }
-.mini:active { transform: translateY(4px); box-shadow: 0 0 0 #9DB8D8; }
+.mini:active { transform: translateY(4px); box-shadow: 0 0 0 var(--edge); }
 .mini--tag { box-shadow: none; background: transparent; color: var(--ink-3); display: inline-flex; align-items: center; }
 .mini--go {
   background: linear-gradient(180deg, #FFE066, var(--gold));
   color: var(--gold-ink);
-  box-shadow: inset 0 2px 0 rgba(255, 255, 255, .85), 0 4px 0 var(--gold-edge);
+  box-shadow: inset 0 2px 0 rgba(var(--white-rgb), calc(.85 * var(--gloss-boost))), 0 4px 0 var(--gold-edge);
   white-space: nowrap;
 }
 .mini--go:active { box-shadow: 0 0 0 var(--gold-edge); }
@@ -1246,8 +1421,8 @@ button { font: inherit; color: inherit; }
   gap: 12px;
   padding: 12px 14px;
   border-radius: var(--r-md);
-  background: linear-gradient(180deg, #FFFFFF, #EFF6FF);
-  box-shadow: inset 0 2px 0 rgba(255, 255, 255, .95), 0 3px 0 rgba(21, 58, 108, .16);
+  background: linear-gradient(180deg, var(--panel-a), var(--panel-b));
+  box-shadow: inset 0 2px 0 rgba(var(--white-rgb), calc(.95 * var(--gloss-boost))), 0 3px 0 rgba(var(--deep-rgb), calc(.16 * var(--shade-boost)));
 }
 .upgrade__meta {
   display: flex;
@@ -1272,11 +1447,11 @@ button { font: inherit; color: inherit; }
   margin: 14px 0 0;
   padding: 12px 14px;
   border-radius: var(--r-md);
-  background: linear-gradient(180deg, #FFF8E0, #FFE9A8);
-  box-shadow: inset 0 2px 0 rgba(255, 255, 255, .7);
+  background: linear-gradient(180deg, var(--gold-row-a), var(--gold-row-b));
+  box-shadow: inset 0 2px 0 rgba(var(--white-rgb), calc(.7 * var(--gloss-boost)));
   font-size: 13.5px;
   font-weight: 800;
-  color: var(--gold-ink);
+  color: var(--gold-text);
   line-height: 1.5;
 }
 
@@ -1289,8 +1464,8 @@ button { font: inherit; color: inherit; }
 .assets__sum > div {
   padding: 11px 14px;
   border-radius: var(--r-md);
-  background: linear-gradient(180deg, #FFFFFF, #EFF6FF);
-  box-shadow: inset 0 2px 0 rgba(255, 255, 255, .95), 0 3px 0 rgba(21, 58, 108, .16);
+  background: linear-gradient(180deg, var(--panel-a), var(--panel-b));
+  box-shadow: inset 0 2px 0 rgba(var(--white-rgb), calc(.95 * var(--gloss-boost))), 0 3px 0 rgba(var(--deep-rgb), calc(.16 * var(--shade-boost)));
 }
 .assets__sum span { display: block; font-size: 11px; font-weight: 900; color: var(--ink-3); }
 .assets__sum b { font-size: 16px; color: var(--ink); }
@@ -1316,10 +1491,10 @@ button { font: inherit; color: inherit; }
   color: var(--gold-ink);
   font-weight: 900;
   cursor: pointer;
-  box-shadow: inset 0 2px 0 rgba(255, 255, 255, .85), 0 4px 0 var(--gold-edge);
+  box-shadow: inset 0 2px 0 rgba(var(--white-rgb), calc(.85 * var(--gloss-boost))), 0 4px 0 var(--gold-edge);
   transition: transform var(--t-fast) var(--pop), box-shadow var(--t-fast);
 }
-.items__pip:active { transform: translateY(4px); box-shadow: inset 0 2px 0 rgba(255, 255, 255, .7), 0 0 0 var(--gold-edge); }
+.items__pip:active { transform: translateY(4px); box-shadow: inset 0 2px 0 rgba(var(--white-rgb), calc(.7 * var(--gloss-boost))), 0 0 0 var(--gold-edge); }
 .items__pip b { font-size: 19px; }
 .items__pip span { font-size: 10.5px; opacity: .75; }
 
@@ -1332,15 +1507,15 @@ button { font: inherit; color: inherit; }
   padding: 9px 12px;
   border: 0;
   border-radius: 14px;
-  background: linear-gradient(180deg, #FFFFFF, #EDF5FF);
+  background: linear-gradient(180deg, var(--panel-a), var(--panel-b));
   text-align: left;
   cursor: pointer;
   font-weight: 900;
   font-size: 13px;
   color: var(--ink);
-  box-shadow: inset 0 2px 0 rgba(255, 255, 255, .95), 0 3px 0 #C9D9EC;
+  box-shadow: inset 0 2px 0 rgba(var(--white-rgb), calc(.95 * var(--gloss-boost))), 0 3px 0 var(--edge-3);
 }
-.items__spot:active { transform: translateY(3px); box-shadow: inset 0 2px 0 rgba(255, 255, 255, .8), 0 0 0 #C9D9EC; }
+.items__spot:active { transform: translateY(3px); box-shadow: inset 0 2px 0 rgba(var(--white-rgb), calc(.8 * var(--gloss-boost))), 0 0 0 var(--edge-3); }
 .items__spot:disabled { opacity: .5; cursor: default; }
 .items__spot-name { display: flex; align-items: center; gap: 7px; min-width: 0; }
 .items__spot-tag { flex: none; font-size: 11px; font-weight: 900; color: var(--ink-3); }
@@ -1356,21 +1531,21 @@ button { font: inherit; color: inherit; }
   padding: 0 15px;
   border: 0;
   border-radius: 999px;
-  background: linear-gradient(180deg, #FFFFFF, #DCEBFB);
+  background: linear-gradient(180deg, var(--panel-a), var(--panel-c));
   color: var(--ink-2);
   font-size: 13px;
   font-weight: 900;
-  box-shadow: inset 0 2px 0 rgba(255, 255, 255, .95), 0 4px 0 #9DB8D8;
+  box-shadow: inset 0 2px 0 rgba(var(--white-rgb), calc(.95 * var(--gloss-boost))), 0 4px 0 var(--edge);
   cursor: pointer;
   transition: transform var(--t-fast) var(--pop), box-shadow var(--t-fast);
 }
-.tab:active { transform: translateY(4px); box-shadow: 0 0 0 #9DB8D8; }
-.tab .dot { width: 11px; height: 11px; border-radius: 50%; background: var(--c); box-shadow: 0 0 0 1.5px #FFFFFF; }
+.tab:active { transform: translateY(4px); box-shadow: 0 0 0 var(--edge); }
+.tab .dot { width: 11px; height: 11px; border-radius: 50%; background: var(--c); box-shadow: 0 0 0 1.5px var(--ring); }
 .tab.is-on {
-  background: linear-gradient(180deg, color-mix(in srgb, var(--c) 70%, #FFFFFF), var(--c));
+  background: linear-gradient(180deg, color-mix(in srgb, var(--c) 70%, var(--panel-a)), var(--c));
   color: #FFFFFF;
-  text-shadow: 0 1.5px 0 rgba(27, 42, 74, .5);
-  box-shadow: inset 0 2px 0 rgba(255, 255, 255, .5), 0 4px 0 rgba(27, 42, 74, .3);
+  text-shadow: 0 1.5px 0 rgba(var(--shade-rgb), calc(.5 * var(--shade-boost)));
+  box-shadow: inset 0 2px 0 rgba(var(--white-rgb), calc(.5 * var(--gloss-boost))), 0 4px 0 rgba(var(--shade-rgb), calc(.3 * var(--shade-boost)));
 }
 
 /* ---------- 16. 战报 / 规则 / 设置 ---------- */
@@ -1386,10 +1561,10 @@ button { font: inherit; color: inherit; }
   color: var(--ink-2);
 }
 .loglist__r { font-family: var(--font-num); font-size: 11px; font-weight: 900; color: var(--ink-3); flex: 0 0 auto; padding-top: 2px; }
-.loglist__row--money, .loglist__row--buy { color: #1E9E4A; }
+.loglist__row--money, .loglist__row--buy { color: var(--pos); }
 .loglist__row--rent, .loglist__row--pay, .loglist__row--danger { color: #E03E3E; }
-.loglist__row--jail { color: #B07A00; }
-.loglist__row--card { color: #7B4BD6; }
+.loglist__row--jail { color: var(--warn); }
+.loglist__row--card { color: var(--card-ink); }
 .loglist__row--skill { color: #0E7EA8; }
 
 .rules h3 {
@@ -1420,8 +1595,8 @@ button { font: inherit; color: inherit; }
   width: 60px; height: 34px;
   border: 0;
   border-radius: 999px;
-  background: linear-gradient(180deg, #C9D8EA, #A9BDD6);
-  box-shadow: inset 0 3px 6px rgba(10, 30, 60, .28);
+  background: linear-gradient(180deg, var(--track-a), var(--track-b));
+  box-shadow: inset 0 3px 6px rgba(var(--drop-rgb), calc(.28 * var(--shade-boost)));
   cursor: pointer;
   transition: background var(--t) var(--soft);
 }
@@ -1431,8 +1606,8 @@ button { font: inherit; color: inherit; }
   top: 3px; left: 3px;
   width: 28px; height: 28px;
   border-radius: 50%;
-  background: linear-gradient(180deg, #FFFFFF, #E4EEFB);
-  box-shadow: 0 3px 0 rgba(21, 58, 108, .3), inset 0 2px 0 rgba(255, 255, 255, .95);
+  background: linear-gradient(180deg, var(--panel-a), var(--panel-d));
+  box-shadow: 0 3px 0 rgba(var(--deep-rgb), calc(.3 * var(--shade-boost))), inset 0 2px 0 rgba(var(--white-rgb), calc(.95 * var(--gloss-boost)));
   transition: transform var(--t) var(--pop);
 }
 .switch.is-on { background: linear-gradient(180deg, #7BE05A, var(--lime)); }
@@ -1444,19 +1619,19 @@ button { font: inherit; color: inherit; }
   padding: 0 15px;
   border: 0;
   border-radius: 999px;
-  background: linear-gradient(180deg, #FFFFFF, #DCEBFB);
+  background: linear-gradient(180deg, var(--panel-a), var(--panel-c));
   color: var(--ink-2);
   font-size: 13px;
   font-weight: 900;
-  box-shadow: inset 0 2px 0 rgba(255, 255, 255, .95), 0 4px 0 #9DB8D8;
+  box-shadow: inset 0 2px 0 rgba(var(--white-rgb), calc(.95 * var(--gloss-boost))), 0 4px 0 var(--edge);
   cursor: pointer;
   transition: transform var(--t-fast) var(--pop), box-shadow var(--t-fast);
 }
-.seg button:active { transform: translateY(4px); box-shadow: 0 0 0 #9DB8D8; }
+.seg button:active { transform: translateY(4px); box-shadow: 0 0 0 var(--edge); }
 .seg button.is-on {
   background: linear-gradient(180deg, #FFE066, var(--gold));
   color: var(--gold-ink);
-  box-shadow: inset 0 2px 0 rgba(255, 255, 255, .8), 0 4px 0 var(--gold-edge);
+  box-shadow: inset 0 2px 0 rgba(var(--white-rgb), calc(.8 * var(--gloss-boost))), 0 4px 0 var(--gold-edge);
 }
 .seg--big { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 14px 0 6px; }
 .seg--big button { min-height: 58px; font-size: 15px; border-radius: 18px; }
@@ -1470,16 +1645,16 @@ button { font: inherit; color: inherit; }
   padding: 0 16px;
   border: 0;
   border-radius: var(--r-md);
-  background: linear-gradient(180deg, #FFFFFF, #E4EEFB);
+  background: linear-gradient(180deg, var(--panel-a), var(--panel-d));
   color: var(--ink);
   font-size: 14.5px;
   font-weight: 900;
   text-align: left;
-  box-shadow: inset 0 2px 0 rgba(255, 255, 255, .95), 0 5px 0 rgba(21, 58, 108, .22), 0 10px 18px rgba(10, 30, 60, .2);
+  box-shadow: inset 0 2px 0 rgba(var(--white-rgb), calc(.95 * var(--gloss-boost))), 0 5px 0 rgba(var(--deep-rgb), calc(.22 * var(--shade-boost))), 0 10px 18px rgba(var(--drop-rgb), calc(.2 * var(--shade-boost)));
   cursor: pointer;
   transition: transform var(--t-fast) var(--pop), box-shadow var(--t-fast);
 }
-.menu__item:active { transform: translateY(5px); box-shadow: 0 0 0 rgba(21, 58, 108, .2); }
+.menu__item:active { transform: translateY(5px); box-shadow: 0 0 0 rgba(var(--deep-rgb), calc(.2 * var(--shade-boost))); }
 .menu__item .ico { width: 21px; height: 21px; color: var(--pink); }
 
 /* ---------- 17. 开局 / 结算 ---------- */
@@ -1491,27 +1666,204 @@ button { font: inherit; color: inherit; }
   gap: 10px;
   padding: 10px 13px;
   border-radius: 14px;
-  background: linear-gradient(180deg, #FFFFFF, #EFF6FF);
-  box-shadow: inset 0 2px 0 rgba(255, 255, 255, .95), 0 3px 0 rgba(21, 58, 108, .16);
+  background: linear-gradient(180deg, var(--panel-a), var(--panel-b));
+  box-shadow: inset 0 2px 0 rgba(var(--white-rgb), calc(.95 * var(--gloss-boost))), 0 3px 0 rgba(var(--deep-rgb), calc(.16 * var(--shade-boost)));
   font-size: 12.5px;
   font-weight: 900;
   color: var(--ink-2);
 }
 .start__hint .ico { width: 18px; height: 18px; color: var(--lime); flex: 0 0 auto; }
 
+/* ---------- 18. 首页（开局前） ----------
+   以前进游戏直接弹一张底部 sheet；现在改成整页的首页：品牌、按钮、人数、规则全铺在
+   页面上。`.home` 是固定覆盖层，盖在游戏本体之上 —— 棋盘照常在后面先建好、量好尺寸，
+   点「开始」只是把它淡出，不参与棋盘的高度预算，也不会顶出布局。
+
+   版面自上而下是「品牌 → 操作按钮 → 人数 / 规则面板」，按钮正好落在页面中间，
+   规则收进 <details> 可折叠；整块居中，矮屏就整体滚动。
+   背景是 assets/home-bg.svg 那张贴底插画，黑夜主题用 filter 压暗成夜景。 */
+.home {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr);
+  justify-items: center;
+  background: radial-gradient(140% 68% at 50% -10%, var(--sky-0) 0%, var(--sky-1) 44%, var(--sky-2) 76%, var(--sky-3) 100%);
+  animation: fade var(--t) var(--soft);
+  transition: opacity 240ms var(--soft);
+}
+.home[hidden] { display: none; }
+.home.is-out { opacity: 0; pointer-events: none; }
+
+/* 背景插画贴在底边：竖屏横向裁切、横屏纵向裁切都能留住城市天际线，
+   天空那截留给 .home 自己的 --sky-* 渐变。
+   z-index -1 是为了待在面板 / 按钮下面 —— 定位伪元素默认会盖住后面那些非定位内容。 */
+.home::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: url("../assets/home-bg.svg") center bottom / cover no-repeat;
+  filter: var(--home-art);
+  transition: filter var(--t) var(--soft);
+  pointer-events: none;
+}
+
+.home__scroll {
+  width: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  /* 顶部让开固定的音效 / 设置按钮 */
+  padding: 54px 20px max(20px, calc(env(safe-area-inset-bottom) + 12px));
+}
+.home__inner {
+  width: min(460px, 100%);
+  margin: auto;              /* 内容不足一屏时居中，超出则从顶部开始并滚动 */
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* 音效 / 设置：固定在右上角；用 fixed 是为了内容滚动时它不跟着一起滚走 */
+.home__top {
+  position: fixed;
+  top: max(14px, env(safe-area-inset-top));
+  right: 16px;
+  z-index: 1;
+  display: flex;
+  gap: 8px;
+}
+.home__top .icon-btn { width: 42px; height: 42px; border-radius: 14px; }
+
+/* 太阳 / 月亮：和游戏页的 .bg__sun 共用一套 --sun-* 令牌，所以白天是暖金太阳、
+   黑夜自动变冷色月亮，不用为插画准备两张图。同样 z-index -1 待在内容下面。 */
+.home__sun {
+  position: absolute;
+  top: 104px;
+  right: 18px;
+  z-index: -1;
+  width: 96px; height: 96px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 40% 36%, var(--sun-1), var(--sun-2) 58%, var(--sun-3));
+  box-shadow: 0 0 0 18px var(--sun-halo-1), 0 0 0 42px var(--sun-halo-2);
+  animation: bob 8s ease-in-out infinite;
+  pointer-events: none;
+}
+
+.home__hero { display: grid; justify-items: center; gap: 8px; text-align: center; padding: 4px 0 2px; }
+.home__mark {
+  width: 68px; height: 68px;
+  display: grid; place-items: center;
+  border-radius: 22px;
+  background: linear-gradient(180deg, #FFE066, var(--gold));
+  color: var(--gold-ink);
+  box-shadow:
+    inset 0 3px 0 rgba(var(--white-rgb), calc(.85 * var(--gloss-boost))),
+    inset 0 -5px 0 rgba(var(--gold-shade-rgb), calc(.25 * var(--shade-boost))),
+    0 8px 0 var(--gold-edge),
+    0 18px 28px rgba(var(--night-rgb), calc(.5 * var(--shade-boost)));
+  animation: bob 3.6s ease-in-out infinite;
+}
+.home__mark .ico { width: 38px; height: 38px; }
+.home__title {
+  margin: 6px 0 0;
+  font-size: 33px;
+  font-weight: 900;
+  letter-spacing: .06em;
+  color: var(--on-sky);
+  text-shadow: 0 3px 0 var(--title-shadow), 0 3px 0 var(--title-shadow), 0 7px 18px rgba(var(--night-rgb), calc(.55 * var(--shade-boost)));
+}
+.home__sub {
+  margin: 0;
+  font-size: 11.5px;
+  font-weight: 900;
+  letter-spacing: .22em;
+  text-transform: uppercase;
+  color: var(--on-sky-dim);
+  /* 背景插画里可能正好压着一朵白云，白字得有一层软阴影才读得清 */
+  text-shadow: 0 1px 4px rgba(var(--night-rgb), calc(.55 * var(--shade-boost)));
+}
+
+.home__panel {
+  padding: 14px;
+  border-radius: var(--r-lg);
+  background: linear-gradient(180deg, var(--panel-a), var(--panel-b));
+  box-shadow: inset 0 0 0 2px var(--ring), 0 7px 0 rgba(var(--deep-rgb), calc(.22 * var(--shade-boost))), 0 22px 40px -14px rgba(var(--night-rgb), calc(.65 * var(--shade-boost)));
+}
+.home__sect + .home__sect { margin-top: 11px; padding-top: 11px; border-top: 2px dashed var(--line-2); }
+.home__label {
+  margin: 0 0 10px;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: .18em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.home__sect .seg--big { margin: 0; }
+.home__sect .start__hint { margin: 0; gap: 7px; }
+.home__sect .start__hint li { padding: 8px 12px; }
+
+/* 规则速览的折叠把手：<summary> 长得和 .home__label 一样，右边挂个会翻面的小三角 */
+.home__fold > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0;
+  cursor: pointer;
+  list-style: none;
+}
+.home__fold > summary::-webkit-details-marker { display: none; }
+.home__fold > summary .ico {
+  width: 16px; height: 16px;
+  color: var(--ink-3);
+  transition: transform var(--t) var(--pop);
+}
+.home__fold[open] > summary { margin-bottom: 10px; }
+.home__fold[open] > summary .ico { transform: rotate(180deg); }
+/* 展开时内容轻轻落下来；收起是瞬时的（<details> 的内容高度没法原生过渡） */
+.home__fold[open] .start__hint { animation: foldIn var(--t) var(--soft); }
+
+.home__cards {
+  margin: 11px 0 0;
+  padding-top: 11px;
+  border-top: 2px dashed var(--line-2);
+  text-align: center;
+}
+
+/* 操作按钮夹在品牌与面板之间，所以「按钮落在页面中间」是版面自然的结果 */
+.home__actions { display: grid; gap: 8px; }
+.home__actions .btn { min-height: 54px; font-size: 16px; }
+/* 首页按钮的标签比 .btn 默认大一号，图标跟着回到同样的比例 */
+.home__actions .btn .ico { width: 20px; height: 20px; }
+
+/* 矮屏（含横屏）上规则那截会被切断，底部渐隐一点，提示还能往下滚。
+   高屏不会滚，也就不会把面板下边缘糊掉。 */
+@media (max-height: 800px) {
+  .home__scroll {
+    -webkit-mask-image: linear-gradient(180deg, #000 calc(100% - 22px), transparent);
+    mask-image: linear-gradient(180deg, #000 calc(100% - 22px), transparent);
+  }
+}
+
 .result { text-align: center; }
 .result__crown { color: var(--gold); animation: bob 2.4s ease-in-out infinite; }
-.result__crown .ico { width: 44px; height: 44px; filter: drop-shadow(0 3px 0 rgba(140, 90, 0, .5)); }
+.result__crown .ico { width: 44px; height: 44px; filter: drop-shadow(0 3px 0 rgba(var(--gold-shade-rgb), calc(.5 * var(--shade-boost)))); }
 .result__win { margin: 10px 0 16px; font-size: 15px; font-weight: 900; color: var(--ink-2); }
 .result__win b {
   display: inline-block;
   padding: 3px 14px;
   border-radius: 999px;
-  background: linear-gradient(180deg, color-mix(in srgb, var(--c) 70%, #FFFFFF), var(--c));
+  background: linear-gradient(180deg, color-mix(in srgb, var(--c) 70%, var(--panel-a)), var(--c));
   color: #FFFFFF;
   font-size: 19px;
-  text-shadow: 0 2px 0 rgba(27, 42, 74, .5);
-  box-shadow: inset 0 2px 0 rgba(255, 255, 255, .5), 0 3px 0 rgba(27, 42, 74, .25);
+  text-shadow: 0 2px 0 rgba(var(--shade-rgb), calc(.5 * var(--shade-boost)));
+  box-shadow: inset 0 2px 0 rgba(var(--white-rgb), calc(.5 * var(--gloss-boost))), 0 3px 0 rgba(var(--shade-rgb), calc(.25 * var(--shade-boost)));
 }
 .result__list { list-style: none; margin: 0; padding: 0 0 6px; text-align: left; }
 .result__list li {
@@ -1522,16 +1874,16 @@ button { font: inherit; color: inherit; }
   padding: 11px 13px;
   margin-bottom: 12px;
   border-radius: var(--r-md);
-  background: linear-gradient(180deg, #FFFFFF, #EFF6FF);
-  box-shadow: inset 0 2px 0 rgba(255, 255, 255, .95), 0 4px 0 rgba(21, 58, 108, .18);
+  background: linear-gradient(180deg, var(--panel-a), var(--panel-b));
+  box-shadow: inset 0 2px 0 rgba(var(--white-rgb), calc(.95 * var(--gloss-boost))), 0 4px 0 rgba(var(--deep-rgb), calc(.18 * var(--shade-boost)));
   font-size: 13.5px;
   font-weight: 900;
   color: var(--ink);
 }
 .result__rank { font-family: var(--font-num); font-weight: 900; color: var(--pink); font-size: 16px; }
 .result__name { display: flex; align-items: center; gap: 8px; }
-.result__name .dot { width: 13px; height: 13px; border-radius: 50%; background: var(--c); box-shadow: inset 0 -2px 0 rgba(27, 42, 74, .2), 0 0 0 1.5px #FFFFFF; }
-.result__worth { color: #1E9E4A; }
+.result__name .dot { width: 13px; height: 13px; border-radius: 50%; background: var(--c); box-shadow: inset 0 -2px 0 rgba(var(--shade-rgb), calc(.2 * var(--shade-boost))), 0 0 0 1.5px var(--ring); }
+.result__worth { color: var(--pos); }
 .result__tag { font-size: 11px; font-weight: 900; color: var(--ink-3); }
 
 /* ---------- 18. 卡牌浮层 ---------- */
@@ -1550,10 +1902,10 @@ button { font: inherit; color: inherit; }
 .cardfx__inner {
   padding: 0 0 18px;
   border-radius: var(--r-lg);
-  background: linear-gradient(180deg, #FFFFFF, #F4F9FF);
+  background: linear-gradient(180deg, var(--panel-a), var(--panel-e));
   text-align: center;
   overflow: hidden;
-  box-shadow: inset 0 0 0 2px #FFFFFF, 0 6px 0 rgba(21, 58, 108, .22), 0 18px 30px -12px rgba(10, 30, 60, .5);
+  box-shadow: inset 0 0 0 2px var(--ring), 0 6px 0 rgba(var(--deep-rgb), calc(.22 * var(--shade-boost))), 0 18px 30px -12px rgba(var(--drop-rgb), calc(.5 * var(--shade-boost)));
 }
 .cardfx__band {
   padding: 10px 14px;
@@ -1562,10 +1914,10 @@ button { font: inherit; color: inherit; }
   font-size: 11.5px;
   font-weight: 900;
   letter-spacing: .18em;
-  box-shadow: inset 0 -3px 0 rgba(140, 90, 0, .22);
+  box-shadow: inset 0 -3px 0 rgba(var(--gold-shade-rgb), calc(.22 * var(--shade-boost)));
 }
-.cardfx--fate .cardfx__band { background: linear-gradient(180deg, #C79BFF, var(--purple)); color: #FFFFFF; text-shadow: 0 1.5px 0 rgba(50, 10, 100, .45); box-shadow: inset 0 -3px 0 rgba(50, 10, 100, .25); }
-.cardfx--skill .cardfx__band { background: linear-gradient(180deg, #8FE0FB, var(--cyan)); color: #06374A; box-shadow: inset 0 -3px 0 rgba(10, 80, 110, .25); }
+.cardfx--fate .cardfx__band { background: linear-gradient(180deg, #C79BFF, var(--purple)); color: #FFFFFF; text-shadow: 0 1.5px 0 rgba(var(--purple-shade-rgb), calc(.45 * var(--shade-boost))); box-shadow: inset 0 -3px 0 rgba(var(--purple-shade-rgb), calc(.25 * var(--shade-boost))); }
+.cardfx--skill .cardfx__band { background: linear-gradient(180deg, #8FE0FB, var(--cyan)); color: #06374A; box-shadow: inset 0 -3px 0 rgba(var(--cyan-shade-rgb), calc(.25 * var(--shade-boost))); }
 .cardfx__text { margin: 16px 16px 10px; font-size: 16px; font-weight: 900; line-height: 1.55; color: var(--ink); }
 .cardfx__who { margin: 0; font-size: 11.5px; font-weight: 900; color: var(--ink-3); }
 .cardfx__btn { width: calc(100% - 32px); margin: 14px 16px 0; min-height: 48px; }
@@ -1585,8 +1937,8 @@ button { font: inherit; color: inherit; }
 .toast {
   padding: 12px 18px;
   border-radius: 999px;
-  background: linear-gradient(180deg, #FFFFFF, #E4EEFB);
-  box-shadow: inset 0 2px 0 rgba(255, 255, 255, .95), 0 4px 0 rgba(21, 58, 108, .2), 0 10px 18px rgba(10, 30, 60, .25);
+  background: linear-gradient(180deg, var(--panel-a), var(--panel-d));
+  box-shadow: inset 0 2px 0 rgba(var(--white-rgb), calc(.95 * var(--gloss-boost))), 0 4px 0 rgba(var(--deep-rgb), calc(.2 * var(--shade-boost))), 0 10px 18px rgba(var(--drop-rgb), calc(.25 * var(--shade-boost)));
   font-size: 13.5px;
   font-weight: 900;
   color: var(--ink);
@@ -1688,6 +2040,8 @@ button { font: inherit; color: inherit; }
 }
 @keyframes toastIn { from { transform: translateY(18px) scale(.88); opacity: 0; } }
 @keyframes toastOut { to { transform: translateY(-10px) scale(.94); opacity: 0; } }
+/* 首页「规则速览」展开：<details> 的高度没法过渡，就让内容自己淡入落下来 */
+@keyframes foldIn { from { opacity: 0; transform: translateY(-6px); } }
 @keyframes deedFlip {
   from { transform: perspective(700px) rotateX(-72deg) translateY(12px); opacity: 0; }
 }
@@ -1755,6 +2109,17 @@ button { font: inherit; color: inherit; }
   .dock__main { min-height: 52px; }
   .dock__main .btn__label { font-size: 15px; }
   .dock__side { font-size: 11px; }
+  /* 首页同步收矮：矮屏让规则（默认是收起的）那截尽量少滚 */
+  .home__scroll { padding: 50px 20px max(14px, calc(env(safe-area-inset-bottom) + 8px)); }
+  .home__inner { gap: 10px; }
+  .home__mark { width: 64px; height: 64px; border-radius: 21px; }
+  .home__mark .ico { width: 36px; height: 36px; }
+  .home__title { font-size: 32px; }
+  .home__panel { padding: 13px; }
+  .home__sect + .home__sect { margin-top: 12px; padding-top: 12px; }
+  .home .start__hint { gap: 7px; }
+  .home .start__hint li { padding: 8px 11px; font-size: 11.5px; }
+  .home__actions .btn { min-height: 50px; }
 }
 
 @media (orientation: landscape) and (max-height: 560px) {
@@ -1821,6 +2186,35 @@ button { font: inherit; color: inherit; }
   .deed__table td { padding: 4px 0; }
   .deed__table tbody { display: grid; grid-template-columns: 1fr 1fr; column-gap: 28px; }
   .deed__table tr { display: flex; justify-content: space-between; gap: 10px; }
+  /* 首页摊成左右两栏：左栏品牌 + 并排的两个按钮，右栏人数与规则 —— 三百多像素的
+     高度里这样才放得下（竖排一屏塞不进去） */
+  .home__scroll { padding: 50px 20px max(14px, calc(env(safe-area-inset-bottom) + 8px)); }
+  .home__inner {
+    width: min(820px, 100%);
+    display: grid;
+    grid-template-columns: minmax(200px, 1fr) minmax(320px, 1.25fr);
+    grid-template-rows: auto auto;
+    align-content: center;
+    align-items: center;
+    gap: 14px 26px;
+  }
+  .home__hero { grid-area: 1 / 1 / 2 / 2; }
+  .home__actions { grid-area: 2 / 1 / 3 / 2; }
+  .home__panel { grid-area: 1 / 2 / 3 / 3; }
+  .home__mark { width: 62px; height: 62px; border-radius: 20px; }
+  .home__mark .ico { width: 34px; height: 34px; }
+  .home__title { font-size: 30px; }
+  .home__panel { padding: 13px; }
+  .home__sect + .home__sect { margin-top: 11px; padding-top: 11px; }
+  .home__actions { grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); }
+  .home__actions .btn { min-height: 48px; }
+  /* 右栏被面板占满，音效 / 设置挪到空的左栏上方，免得压在人数按钮上 */
+  .home__top { right: auto; left: 16px; }
+  /* 太阳 / 月亮跟着顶到右上角：右栏顶部就是面板，低一点会被盖住大半 */
+  .home__sun { top: 18px; }
+  /* 规则速览逐条再收矮一点，矮屏能少滚一截 */
+  .home .home__sect .start__hint { gap: 6px; }
+  .home .home__sect .start__hint li { padding: 7px 11px; font-size: 11.5px; }
 }
 
 @media (max-width: 340px) {
@@ -1846,14 +2240,14 @@ button { font: inherit; color: inherit; }
 }
 .cardsheet th,
 .cardsheet td {
-  border: 1px solid rgba(27, 42, 74, .16);   /* 网格线 */
+  border: 1px solid rgba(var(--hair-rgb), .16);   /* 网格线 */
   padding: 6px 7px;
   text-align: left;
   vertical-align: top;
   word-break: break-word;
 }
 .cardsheet thead th {
-  background: rgba(255, 201, 60, .18);
+  background: var(--gold-tint);
   font-size: 10.5px;
   font-weight: 900;
   letter-spacing: .04em;
@@ -1861,12 +2255,12 @@ button { font: inherit; color: inherit; }
 }
 .cardsheet td:first-child { width: 42%; font-weight: 900; color: var(--ink); }
 .cardsheet td:last-child { font-weight: 800; color: var(--ink-2); }
-.cardsheet tbody tr:nth-child(even) { background: rgba(27, 42, 74, .025); }
+.cardsheet tbody tr:nth-child(even) { background: rgba(var(--hair-rgb), .025); }
 
 /* ---------- 23. 无障碍 ---------- */
 /* 只压低「装饰性无限循环」动画，保留游戏一次性动效（跳跃、骰子、盖章、金币等） */
 @media (prefers-reduced-motion: reduce) {
-  .hub__rays, .brand__mark, .hub__frame, .result__crown,
+  .hub__rays, .brand__mark, .home__mark, .home__sun, .hub__frame, .result__crown,
   .bg__sun, .bg__rays, .bg__cloud, .chip.is-active .chip__dot,
   .hand__card.is-ready,
   .token.is-active .token__face, .token.is-active .token__ring {
@@ -1877,12 +2271,16 @@ button { font: inherit; color: inherit; }
 /* 用户在设置里手动打开「减少动画」时，再整体降级 */
 .app.reduce-motion *,
 .app.reduce-motion *::before,
-.app.reduce-motion *::after {
+.app.reduce-motion *::after,
+.home.reduce-motion *,
+.home.reduce-motion *::before,
+.home.reduce-motion *::after {
   animation-duration: .001ms !important;
   animation-iteration-count: 1 !important;
   transition-duration: .001ms !important;
 }
 
 @media (prefers-contrast: more) {
-  :root { --ink-2: #3C4C6B; --ink-3: #5A6B8C; --line: rgba(27, 42, 74, .3); }
+  :root { --ink-2: #3C4C6B; --ink-3: #5A6B8C; --line: rgba(var(--hair-rgb), .3); }
+  html[data-theme="dark"] { --ink-2: #C6D3E8; --ink-3: #9AABC6; }
 }

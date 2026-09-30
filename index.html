@@ -3,8 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=5">
+<!-- theme-color 由 js/theme.js 随主题改写（白天 #2E6FBE / 黑夜 #17233C） -->
 <meta name="theme-color" content="#2E6FBE">
-<meta name="color-scheme" content="light">
+<meta name="color-scheme" content="light dark">
 <meta name="description" content="手机竖屏优先的网页版大富翁：买地、建房、收租、拍卖、抵押、破产，24 格环形棋盘，1 人对战 3 个 AI。纯前端零依赖，打开即玩，可离线。">
 <title>大富翁 · 地产小镇</title>
 <link rel="canonical" href="https://wnzc.github.io/dafuweng/">
@@ -37,6 +38,8 @@
 <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
 
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0' stop-color='%236FB6EC'/%3E%3Cstop offset='1' stop-color='%231B4E96'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='32' height='32' rx='7.5' fill='url(%23g)'/%3E%3Ccircle cx='16' cy='16' r='10.4' fill='none' stroke='%23FFFDF4' stroke-width='4.2'/%3E%3Ccircle cx='16' cy='16' r='3.5' fill='%23FFC93C'/%3E%3C/svg%3E">
+<!-- 主题必须赶在样式表之前落地，否则首屏会先闪一下白天再变黑 -->
+<script src="js/theme.js"></script>
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -51,42 +54,53 @@
   <span class="bg__cloud bg__cloud--3"></span>
 </div>
 
-<!-- ============ SVG 图标 sprite：2px 圆头描边，圆润造型 ============ -->
+<!-- ============ SVG 图标 sprite：2px 圆头描边，圆润造型 ============
+     每个图标都必须写成 <symbol viewBox="0 0 24 24">，不能写成 <g>：
+     <use> 引 <symbol> 时会把 viewBox 当成缩放盒，把 24 格图形正好铺满引用它的
+     <svg class="ico">；而引 <g> 没有 viewBox 可用，图形按 1 单位 = 1px 画在
+     21 / 18px 的框里，右边和下边被裁掉一截，视觉上还偏右下。 -->
 <svg class="sprite" aria-hidden="true" focusable="false">
   <defs>
-    <g id="i-go" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h11M11 7.5l4.5 4.5-4.5 4.5"/></g>
-    <g id="i-jail" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 5v14M9.7 5v14M14.3 5v14M19 5v14M4 5.2h16M4 18.8h16"/></g>
-    <g id="i-parking" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="5"/><path d="M9.6 16.8V7.6h3.6a2.9 2.9 0 0 1 0 5.8H9.6"/></g>
-    <g id="i-chance" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9.4 9.6a2.7 2.7 0 1 1 3.8 2.5c-.8.4-1.2 1-1.2 1.9v.3"/><circle cx="12" cy="17.4" r="1.2" fill="currentColor" stroke="none"/></g>
-    <g id="i-fate" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 3.6l2.2 5.4 5.4 2.2-5.4 2.2L12 18.8l-2.2-5.4L4.4 11.2l5.4-2.2z"/><path d="M18.4 16.6l.8 1.9 1.9.8-1.9.8-.8 1.9-.8-1.9-1.9-.8 1.9-.8z"/></g>
-    <g id="i-tax" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6.5 17.5L17.5 6.5"/><circle cx="8.4" cy="8.4" r="2.4"/><circle cx="15.6" cy="15.6" r="2.4"/></g>
-    <g id="i-rail" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="4" width="14" height="12.5" rx="4"/><path d="M5.5 9.4h13M9 16.5l-1.6 3M15 16.5l1.6 3"/><circle cx="9.2" cy="13" r="1.1" fill="currentColor" stroke="none"/><circle cx="14.8" cy="13" r="1.1" fill="currentColor" stroke="none"/></g>
-    <g id="i-bolt" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M13.4 3L6 13.2h4.6L9.4 21 18 10.4h-4.7z"/></g>
-    <g id="i-upgrade" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V6"/><path d="M7 11l5-5 5 5"/><path d="M5 20h14"/></g>
-    <g id="i-house" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"><path d="M3.8 11.4L12 4.4l8.2 7M6.2 10.2v8.6a1.4 1.4 0 0 0 1.4 1.4h8.8a1.4 1.4 0 0 0 1.4-1.4v-8.6"/><path d="M12 16.6c-1-.9-2.4-2-2.4-3.2a1.4 1.4 0 0 1 2.4-1 1.4 1.4 0 0 1 2.4 1c0 1.2-1.4 2.3-2.4 3.2z" fill="currentColor" stroke="none"/></g>
-    <g id="i-dice" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="5"/><circle cx="9" cy="9" r="1.4" fill="currentColor" stroke="none"/><circle cx="15" cy="15" r="1.4" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none"/></g>
-    <g id="i-coin" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.4"/><path d="M12 7.4v9.2M9.6 9.9h3.9a1.7 1.7 0 0 1 0 3.4H9.8"/></g>
-    <g id="i-sound" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"><path d="M4.5 9.6h3.1L11.4 6.2v11.6L7.6 14.4H4.5z"/><path d="M15.2 9.5a4 4 0 0 1 0 5M17.8 6.9a7.4 7.4 0 0 1 0 10.2"/></g>
-    <g id="i-mute" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"><path d="M4.5 9.6h3.1L11.4 6.2v11.6L7.6 14.4H4.5z"/><path d="M15 9.9l4.3 4.2M19.3 9.9L15 14.1"/></g>
-    <g id="i-close" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M7 7l10 10M17 7L7 17"/></g>
-    <g id="i-list" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4.5 7h15M4.5 12h15M4.5 17h9"/></g>
-    <g id="i-book" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"><path d="M5 5.5A1.5 1.5 0 0 1 6.5 4H17v15.5H6.5A1.5 1.5 0 0 1 5 18z"/><path d="M17 8.5h2.2V20H6.5"/></g>
-    <g id="i-gear" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3.2"/><path d="M12 3.2v2.6M12 18.2v2.6M4.8 4.8l1.9 1.9M17.3 17.3l1.9 1.9M3.2 12h2.6M18.2 12h2.6M4.8 19.2l1.9-1.9M17.3 6.7l1.9-1.9"/></g>
-    <g id="i-restart" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19.6 12a7.6 7.6 0 1 1-2.5-5.6"/><path d="M19.6 4.6v4.2h-4.2"/></g>
-    <g id="i-crown" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"><path d="M4 17.4l1.6-8.2 4.2 3.4L12 6l2.2 6.6 4.2-3.4 1.6 8.2z"/><path d="M5.4 20.4h13.2"/></g>
-    <g id="i-alert" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"><path d="M12 4.4l8.4 15.2H3.6z"/><path d="M12 10.2v4M12 17.4h.01"/></g>
-    <g id="i-menu" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M5 8h14M5 12h14M5 16h14"/></g>
-    <g id="i-x2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 19.4V6.4M4.6 9.8L8 6.4l3.4 3.4M16 19.4V6.4M12.6 9.8L16 6.4l3.4 3.4"/></g>
-    <g id="i-cards" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="3.2" y="7.2" width="11.4" height="13.8" rx="2.2"/><rect x="9.4" y="3" width="11.4" height="13.8" rx="2.2"/></g>
-    <g id="i-cash" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2.8" y="6.6" width="18.4" height="10.8" rx="2.4"/><circle cx="12" cy="12" r="2.6"/><path d="M6.2 9.6v4.8M17.8 9.6v4.8"/></g>
-    <g id="i-heart" fill="currentColor"><path d="M12 20s-7-4.3-7-9a4 4 0 0 1 7-2.6A4 4 0 0 1 19 11c0 4.7-7 9-7 9z"/></g>
+    <symbol id="i-go" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h11M11 7.5l4.5 4.5-4.5 4.5"/></symbol>
+    <symbol id="i-jail" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 5v14M9.7 5v14M14.3 5v14M19 5v14M4 5.2h16M4 18.8h16"/></symbol>
+    <symbol id="i-parking" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="5"/><path d="M9.6 16.8V7.6h3.6a2.9 2.9 0 0 1 0 5.8H9.6"/></symbol>
+    <symbol id="i-chance" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9.4 9.6a2.7 2.7 0 1 1 3.8 2.5c-.8.4-1.2 1-1.2 1.9v.3"/><circle cx="12" cy="17.4" r="1.2" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-fate" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 3.6l2.2 5.4 5.4 2.2-5.4 2.2L12 18.8l-2.2-5.4L4.4 11.2l5.4-2.2z"/><path d="M18.4 16.6l.8 1.9 1.9.8-1.9.8-.8 1.9-.8-1.9-1.9-.8 1.9-.8z"/></symbol>
+    <symbol id="i-tax" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6.5 17.5L17.5 6.5"/><circle cx="8.4" cy="8.4" r="2.4"/><circle cx="15.6" cy="15.6" r="2.4"/></symbol>
+    <symbol id="i-rail" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="4" width="14" height="12.5" rx="4"/><path d="M5.5 9.4h13M9 16.5l-1.6 3M15 16.5l1.6 3"/><circle cx="9.2" cy="13" r="1.1" fill="currentColor" stroke="none"/><circle cx="14.8" cy="13" r="1.1" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-bolt" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M13.4 3L6 13.2h4.6L9.4 21 18 10.4h-4.7z"/></symbol>
+    <symbol id="i-upgrade" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V6"/><path d="M7 11l5-5 5 5"/><path d="M5 20h14"/></symbol>
+    <symbol id="i-house" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"><path d="M3.8 11.4L12 4.4l8.2 7M6.2 10.2v8.6a1.4 1.4 0 0 0 1.4 1.4h8.8a1.4 1.4 0 0 0 1.4-1.4v-8.6"/><path d="M12 16.6c-1-.9-2.4-2-2.4-3.2a1.4 1.4 0 0 1 2.4-1 1.4 1.4 0 0 1 2.4 1c0 1.2-1.4 2.3-2.4 3.2z" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-dice" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="5"/><circle cx="9" cy="9" r="1.4" fill="currentColor" stroke="none"/><circle cx="15" cy="15" r="1.4" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-coin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.4"/><path d="M12 7.4v9.2M9.6 9.9h3.9a1.7 1.7 0 0 1 0 3.4H9.8"/></symbol>
+    <symbol id="i-sound" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"><path d="M4.5 9.6h3.1L11.4 6.2v11.6L7.6 14.4H4.5z"/><path d="M15.2 9.5a4 4 0 0 1 0 5M17.8 6.9a7.4 7.4 0 0 1 0 10.2"/></symbol>
+    <symbol id="i-mute" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"><path d="M4.5 9.6h3.1L11.4 6.2v11.6L7.6 14.4H4.5z"/><path d="M15 9.9l4.3 4.2M19.3 9.9L15 14.1"/></symbol>
+    <symbol id="i-close" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M7 7l10 10M17 7L7 17"/></symbol>
+    <symbol id="i-list" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4.5 7h15M4.5 12h15M4.5 17h9"/></symbol>
+    <!-- 折叠小三角（首页「规则速览」的把手） -->
+    <symbol id="i-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 9.5l5.5 5.5 5.5-5.5"/></symbol>
+    <symbol id="i-book" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"><path d="M5 5.5A1.5 1.5 0 0 1 6.5 4H17v15.5H6.5A1.5 1.5 0 0 1 5 18z"/><path d="M17 8.5h2.2V20H6.5"/></symbol>
+    <!-- 齿轮：外圈 + 轴心 + 8 颗短齿。旧版只有轴心和 8 根细长辐条，缩小后像太阳 -->
+    <symbol id="i-gear" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2.8"/><path stroke-width="2.4" d="M12 3.6v3M12 17.4v3M3.6 12h3M17.4 12h3M5.94 5.94l2.24 2.24M15.82 15.82l2.24 2.24M5.94 18.06l2.24-2.24M15.82 8.18l2.24-2.24"/></symbol>
+    <symbol id="i-restart" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19.6 12a7.6 7.6 0 1 1-2.5-5.6"/><path d="M19.6 4.6v4.2h-4.2"/></symbol>
+    <!-- 主题切换：轴心 + 八根辐条正好是太阳；月亮用标准的新月缺口造型 -->
+    <symbol id="i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3.4"/><path d="M12 3.2v2.6M12 18.2v2.6M4.8 4.8l1.9 1.9M17.3 17.3l1.9 1.9M3.2 12h2.6M18.2 12h2.6M4.8 19.2l1.9-1.9M17.3 6.7l1.9-1.9"/></symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></symbol>
+    <symbol id="i-crown" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"><path d="M4 17.4l1.6-8.2 4.2 3.4L12 6l2.2 6.6 4.2-3.4 1.6 8.2z"/><path d="M5.4 20.4h13.2"/></symbol>
+    <symbol id="i-alert" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"><path d="M12 4.4l8.4 15.2H3.6z"/><path d="M12 10.2v4M12 17.4h.01"/></symbol>
+    <symbol id="i-menu" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M5 8h14M5 12h14M5 16h14"/></symbol>
+    <symbol id="i-x2" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 19.4V6.4M4.6 9.8L8 6.4l3.4 3.4M16 19.4V6.4M12.6 9.8L16 6.4l3.4 3.4"/></symbol>
+    <symbol id="i-cards" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="3.2" y="7.2" width="11.4" height="13.8" rx="2.2"/><rect x="9.4" y="3" width="11.4" height="13.8" rx="2.2"/></symbol>
+    <symbol id="i-cash" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2.8" y="6.6" width="18.4" height="10.8" rx="2.4"/><circle cx="12" cy="12" r="2.6"/><path d="M6.2 9.6v4.8M17.8 9.6v4.8"/></symbol>
+    <symbol id="i-heart" viewBox="0 0 24 24" fill="currentColor"><path d="M12 20s-7-4.3-7-9a4 4 0 0 1 7-2.6A4 4 0 0 1 19 11c0 4.7-7 9-7 9z"/></symbol>
   </defs>
 </svg>
 
 <div class="app" id="app">
 
   <header class="hud">
-    <div class="brand">
+    <!-- 左上角品牌区就是「回首页」：整块做成按钮，键盘 / 读屏都能用 -->
+    <button class="brand" id="brand" type="button" title="回到首页">
       <span class="brand__mark" aria-hidden="true">
         <svg class="ico"><use href="#i-house"></use></svg>
       </span>
@@ -94,7 +108,7 @@
         <b class="brand__name">大富翁</b>
         <span class="brand__sub">地产小镇 · CUTE TYCOON</span>
       </span>
-    </div>
+    </button>
     <div class="hud__tools">
       <button class="icon-btn" id="btnSound" type="button" aria-label="音效开关"></button>
       <button class="icon-btn" id="btnMenu" type="button" aria-label="菜单">
@@ -140,6 +154,9 @@
   </footer>
 
 </div>
+
+<!-- ============ 首页：开局前的人数与规则直接铺在页面上，不再进游戏就弹底部弹窗 -->
+<section class="home" id="home" aria-label="首页" hidden></section>
 
 <div class="sheet-layer" id="sheetLayer" hidden></div>
 <div class="toasts" id="toasts" aria-live="polite"></div>
